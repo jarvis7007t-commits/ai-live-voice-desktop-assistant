@@ -308,7 +308,7 @@ const App: React.FC = () => {
   }, [status, stopSession]);
 
   return (
-    <div className="flex flex-col items-center justify-center h-full w-full bg-[#f8fafc]">
+    <div className="relative flex items-center justify-center w-full h-full min-h-full bg-[#f8fafc]">
       {/* Command Preview HUD */}
       <div className={`fixed top-10 left-1/2 -translate-x-1/2 z-50 transition-all duration-500 transform ${lastCommand ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 -translate-y-10 scale-95 pointer-events-none'}`}>
         <div className="bg-[#1a1d23] border border-white/10 rounded-2xl px-6 py-4 shadow-2xl flex items-center gap-4">
@@ -326,7 +326,7 @@ const App: React.FC = () => {
       <canvas ref={canvasRef} className="hidden" />
 
       {/* Main Container */}
-      <div className="relative flex flex-col items-center gap-4">
+      <div className="relative flex flex-col items-center justify-center gap-6 p-4">
         {/* Floating MIC OFF Badge */}
         <div className={`transition-all duration-500 transform ${config.isMuted && status === SessionStatus.CONNECTED ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
           <div className="bg-red-500 text-white px-4 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest shadow-lg animate-pulse">Mic Muted</div>
