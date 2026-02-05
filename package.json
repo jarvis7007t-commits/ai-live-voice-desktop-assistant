@@ -1,15 +1,12 @@
-
 {
-  "name": "gemini-live-assistant-desktop",
+  "name": "gemini-live-vision",
   "private": true,
-  "version": "1.0.0",
+  "version": "0.0.0",
   "type": "module",
-  "main": "main.cjs",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "start": "electron .",
-    "package": "vite build && electron-builder"
+    "preview": "vite preview"
   },
   "dependencies": {
     "react-dom": "^19.2.3",
@@ -17,26 +14,9 @@
     "react": "^19.2.3"
   },
   "devDependencies": {
-    "electron": "^33.0.0",
-    "electron-builder": "^24.13.3",
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
-  },
-  "build": {
-    "appId": "com.gemini.live.assistant",
-    "productName": "Gemini Live Assistant",
-    "win": {
-      "target": "portable"
-    },
-    "directories": {
-      "output": "dist-desktop"
-    },
-    "files": [
-      "dist/**/*",
-      "main.cjs",
-      "package.json"
-    ]
   }
 }
