@@ -8,12 +8,14 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export default defineConfig(({ mode }) => {
+    // Load environment variables from current directory
     const env = loadEnv(mode, '.', '');
-    const apiKey = env.GEMINI_API_KEY || '';
+    // Support both naming conventions for the API key
+    const apiKey = env.GEMINI_API_KEY || env.API_KEY || '';
 
     return {
-      // Use '' for absolute relative paths, works best for file:// protocols in Electron/WebViews
-      base: '', 
+      // Use absolute root path as requested by the user
+      base: '/',
       appType: 'spa',
       server: {
         port: 3000,
@@ -27,18 +29,14 @@ export default defineConfig(({ mode }) => {
         sourcemap: mode === 'development',
         minify: 'esbuild',
         rollupOptions: {
-          output: {
-            // Ensure single entry point for easier desktop integration
-            manualChunks: undefined,
-            entryFileNames: `assets/[name].js`,
-            chunkFileNames: `assets/[name].js`,
-            assetFileNames: `assets/[name].[ext]`
-          }
+          input: {
+            main: path.resolve(__dirname, 'index.html'),
+          },
         }
       },
       plugins: [react()],
       define: {
-        // Essential shims for desktop environments
+        // Injects environment variables into the build
         'process.env.API_KEY': JSON.stringify(apiKey),
         'process.env.GEMINI_API_KEY': JSON.stringify(apiKey),
         'process.env.NODE_ENV': JSON.stringify(mode),
