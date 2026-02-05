@@ -1,3 +1,4 @@
+
 {
   "name": "Gemini Voice Desktop",
   "short_name": "GeminiVoice",
@@ -5,17 +6,17 @@
   "id": "/?source=pwa",
   "start_url": "index.html",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#0f172a",
+  "background_color": "transparent",
+  "theme_color": "#22d3ee",
   "icons": [
     {
-      "src": "https://cdn-icons-png.flaticon.com/512/3293/3293466.png",
+      "src": "https://cdn-icons-png.flaticon.com/512/2099/2099165.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "https://cdn-icons-png.flaticon.com/512/3293/3293466.png",
+      "src": "https://cdn-icons-png.flaticon.com/512/2099/2099165.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
