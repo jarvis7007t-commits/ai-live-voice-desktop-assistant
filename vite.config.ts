@@ -12,6 +12,7 @@ export default defineConfig(({ mode }) => {
     const apiKey = env.GEMINI_API_KEY || '';
 
     return {
+      // Use relative base for local file:// protocol support (Electron/WebView)
       base: './',
       appType: 'spa',
       server: {
@@ -24,7 +25,7 @@ export default defineConfig(({ mode }) => {
         emptyOutDir: true,
         assetsDir: 'assets',
         sourcemap: mode === 'development',
-        // Desktop environments can be sensitive to code splitting
+        // Desktop environments benefit from reduced code splitting
         rollupOptions: {
           output: {
             manualChunks: undefined
@@ -35,7 +36,8 @@ export default defineConfig(({ mode }) => {
       define: {
         'process.env.API_KEY': JSON.stringify(apiKey),
         'process.env.GEMINI_API_KEY': JSON.stringify(apiKey),
-        'process.env.NODE_ENV': JSON.stringify(mode)
+        'process.env.NODE_ENV': JSON.stringify(mode),
+        'global': 'window', // Polyfill global for some older libraries
       },
       resolve: {
         alias: {
