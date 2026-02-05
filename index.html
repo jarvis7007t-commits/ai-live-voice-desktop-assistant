@@ -16,7 +16,6 @@
         height: 100%; width: 100%; margin: 0; padding: 0;
         background: transparent !important; 
         overflow: hidden; 
-        position: fixed;
       }
       body { 
         font-family: 'Inter', sans-serif; 
@@ -34,7 +33,7 @@
         background: transparent !important;
       }
 
-      /* Compact High-Tech Capsule Container */
+      /* Desktop Draggable Logic */
       .lumina-capsule {
         position: relative;
         width: 280px;
@@ -53,6 +52,15 @@
         z-index: 10;
         transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
         flex-shrink: 0;
+
+        /* Make the whole pill draggable */
+        -webkit-app-region: drag;
+        cursor: move;
+      }
+
+      /* Important: Disable dragging on buttons so they remain clickable */
+      .section-vortex, .section-controls, .control-icon {
+        -webkit-app-region: no-drag;
       }
 
       @keyframes vibrate {
@@ -66,10 +74,7 @@
       .vibrating {
         animation: vibrate 0.1s infinite linear;
         border-color: rgba(34, 211, 238, 0.6);
-        box-shadow: 
-          0 10px 25px rgba(0, 0, 0, 0.8), 
-          0 0 15px rgba(34, 211, 238, 0.3),
-          inset 0 0 6px rgba(255, 255, 255, 0.1);
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.8), 0 0 15px rgba(34, 211, 238, 0.3);
       }
 
       .lumina-capsule::after {
@@ -114,23 +119,6 @@
 
       .connected .vortex-glow { opacity: 1; }
 
-      @keyframes pulse-glow {
-        0%, 100% { opacity: 0.4; transform: scale(1); }
-        50% { opacity: 0.7; transform: scale(1.1); }
-      }
-
-      .globe-overlay {
-        position: relative;
-        z-index: 5;
-        color: #fff;
-        transition: all 0.3s ease;
-      }
-
-      .connected .globe-overlay {
-        color: #22d3ee;
-        filter: drop-shadow(0 0 6px rgba(34, 211, 238, 0.8));
-      }
-
       .section-controls {
         display: flex;
         gap: 10px;
@@ -152,7 +140,6 @@
         background: rgba(255, 255, 255, 0.02);
       }
 
-      .control-icon:hover { background: rgba(255, 255, 255, 0.08); }
       .icon-inactive { color: #475569; }
       .icon-active-cyan { color: #22d3ee; filter: drop-shadow(0 0 8px rgba(34, 211, 238, 0.8)); }
       .icon-active-red { color: #ef4444; filter: drop-shadow(0 0 10px rgba(239, 68, 68, 0.8)); }
