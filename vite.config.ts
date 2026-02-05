@@ -12,8 +12,8 @@ export default defineConfig(({ mode }) => {
     const apiKey = env.GEMINI_API_KEY || '';
 
     return {
-      // Use relative base for local file:// protocol support (Electron/WebView)
-      base: './',
+      // Use '' for absolute relative paths, works best for file:// protocols in Electron/WebViews
+      base: '', 
       appType: 'spa',
       server: {
         port: 3000,
@@ -25,19 +25,26 @@ export default defineConfig(({ mode }) => {
         emptyOutDir: true,
         assetsDir: 'assets',
         sourcemap: mode === 'development',
-        // Desktop environments benefit from reduced code splitting
+        minify: 'esbuild',
         rollupOptions: {
           output: {
-            manualChunks: undefined
+            // Ensure single entry point for easier desktop integration
+            manualChunks: undefined,
+            entryFileNames: `assets/[name].js`,
+            chunkFileNames: `assets/[name].js`,
+            assetFileNames: `assets/[name].[ext]`
           }
         }
       },
       plugins: [react()],
       define: {
+        // Essential shims for desktop environments
         'process.env.API_KEY': JSON.stringify(apiKey),
         'process.env.GEMINI_API_KEY': JSON.stringify(apiKey),
         'process.env.NODE_ENV': JSON.stringify(mode),
-        'global': 'window', // Polyfill global for some older libraries
+        'global': 'window',
+        'process.platform': JSON.stringify('browser'),
+        'process.version': JSON.stringify(''),
       },
       resolve: {
         alias: {
