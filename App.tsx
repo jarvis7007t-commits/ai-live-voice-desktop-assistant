@@ -5,6 +5,11 @@ import { SessionStatus, LiveConfig } from './types';
 import { createBlob, decode, decodeAudioData } from './utils/audio-utils';
 import Visualizer from './components/Visualizer';
 
+// Check if we are running inside Electron
+// Cast window to any to access process property which is injected by Electron at runtime
+const isElectron = typeof window !== 'undefined' && (window as any).process && (window as any).process.type;
+const ipcRenderer = isElectron ? (window as any).require('electron').ipcRenderer : null;
+
 const MODEL_NAME = 'gemini-2.5-flash-native-audio-preview-12-2025';
 
 const App: React.FC = () => {
@@ -108,15 +113,43 @@ const App: React.FC = () => {
     } catch (err) { setStatus(SessionStatus.IDLE); }
   };
 
+  const handleVideoClick = () => {
+    if (ipcRenderer) {
+      ipcRenderer.send('open-video-window');
+    } else {
+      // Web fallback
+      setConfig(p => ({ ...p, isCameraEnabled: !p.isCameraEnabled }));
+    }
+  };
+
   const isConnected = status === SessionStatus.CONNECTED;
   const isInteracting = isUserTalking || isModelTalking;
 
+  // Render video feed in separate route if hash is #video
+  if (window.location.hash === '#video') {
+    return (
+      <div className="w-full h-full bg-black flex items-center justify-center text-cyan-400">
+         <div className="flex flex-col items-center">
+            <svg className="animate-pulse mb-4" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+               <path d="M23 7l-7 5 7 5V7z"></path>
+               <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+            </svg>
+            <p className="font-mono text-sm tracking-widest">GEMINI VISION ACTIVE</p>
+         </div>
+      </div>
+    );
+  }
+
   return (
-    <div className={`lumina-capsule ${isConnected ? 'connected' : ''} ${isInteracting ? 'vibrating' : ''}`}>
+    <div 
+      className={`lumina-capsule ${isConnected ? 'connected' : ''} ${isInteracting ? 'vibrating' : ''}`}
+      style={{ WebkitAppRegion: 'drag' } as any}
+    >
       {/* Vortex Earth Button Section */}
       <div 
         className="section-vortex"
         onClick={isConnected ? stopSession : startSession}
+        style={{ WebkitAppRegion: 'no-drag' } as any}
       >
         <div className="vortex-glow"></div>
         <svg className="globe-overlay" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -135,7 +168,7 @@ const App: React.FC = () => {
       />
 
       {/* Control Icons Section */}
-      <div className="section-controls">
+      <div className="section-controls" style={{ WebkitAppRegion: 'no-drag' } as any}>
         {/* Call Button: Red when live active */}
         <div 
           className={`control-icon ${isConnected ? 'icon-active-red' : 'icon-inactive'}`}
@@ -159,8 +192,11 @@ const App: React.FC = () => {
           </svg>
         </div>
 
-        {/* Video Button: Disabled for now */}
-        <div className="control-icon icon-inactive slashed">
+        {/* Video Button: Trigger separate window */}
+        <div 
+          className={`control-icon ${config.isCameraEnabled ? 'icon-active-cyan' : 'icon-inactive'}`}
+          onClick={handleVideoClick}
+        >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M23 7l-7 5 7 5V7z"></path>
             <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
