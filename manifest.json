@@ -1,13 +1,13 @@
 
 {
-  "name": "Gemini Voice Desktop",
-  "short_name": "GeminiVoice",
-  "description": "Voice controlled web application for desktop testing",
+  "name": "AI Live Voice Desktop Assistant",
+  "short_name": "AI Voice",
+  "description": "A high-performance real-time conversational agent using Gemini 2.5 Live API.",
   "id": "/?source=pwa",
-  "start_url": "index.html",
+  "start_url": "/",
   "display": "standalone",
-  "background_color": "transparent",
-  "theme_color": "#22d3ee",
+  "background_color": "#000000",
+  "theme_color": "#000000",
   "icons": [
     {
       "src": "https://cdn-icons-png.flaticon.com/512/2099/2099165.png",
