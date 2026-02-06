@@ -1,20 +1,38 @@
 
 const { app, BrowserWindow, ipcMain, screen } = require('electron');
 const path = require('path');
-const { fileURLToPath } = require('url');
-
-// Handle ES modules __dirname equivalent
-const __dirname_dist = path.resolve();
 
 let mainWindow;
-let videoWindow;
+let floatingWindow;
+
+const isDev = process.env.ELECTRON_START_URL ? true : false;
+const BASE_URL = process.env.ELECTRON_START_URL || `file://${path.join(__dirname, 'dist/index.html')}`;
 
 function createMainWindow() {
+  mainWindow = new BrowserWindow({
+    width: 1200,
+    height: 800,
+    show: false, // Start hidden as per requirements
+    title: "Gemini Live Vision - Dashboard",
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false,
+    },
+  });
+
+  mainWindow.loadURL(BASE_URL);
+
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+  });
+}
+
+function createFloatingWindow() {
   const { width: screenWidth, height: screenHeight } = screen.getPrimaryDisplay().workAreaSize;
 
-  mainWindow = new BrowserWindow({
+  floatingWindow = new BrowserWindow({
     width: 320,
-    height: 90, // Slightly taller to accommodate the glow/shadows
+    height: 100,
     x: screenWidth - 340,
     y: screenHeight - 120,
     frame: false,
@@ -23,76 +41,49 @@ function createMainWindow() {
     resizable: false,
     movable: true,
     hasShadow: false,
-    skipTaskbar: false,
+    skipTaskbar: true, // Professional toolbar behavior
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
       backgroundThrottling: false,
-      webSecurity: false // Necessary for local file loading with some API configs
     },
   });
 
-  // Use environment variable for dev, fallback to local file for prod
-  const startUrl = process.env.ELECTRON_START_URL || `file://${path.join(__dirname_dist, 'dist/index.html')}`;
-  mainWindow.loadURL(startUrl);
+  // Load with a query parameter to trigger "Floating Mode" in React
+  const floatingUrl = isDev ? `${BASE_URL}?view=floating` : `${BASE_URL}#/?view=floating`;
+  floatingWindow.loadURL(floatingUrl);
 
-  // Allow clicking through transparent areas if needed (optional)
-  // mainWindow.setIgnoreMouseEvents(false);
-
-  mainWindow.on('closed', () => {
-    mainWindow = null;
-    if (videoWindow) videoWindow.close();
+  floatingWindow.on('closed', () => {
+    floatingWindow = null;
+    if (mainWindow) mainWindow.close();
   });
 }
 
-function createVideoWindow() {
-  if (videoWindow) {
-    videoWindow.focus();
-    return;
-  }
-
-  videoWindow = new BrowserWindow({
-    width: 800,
-    height: 600,
-    title: "Gemini Vision Feed",
-    autoHideMenuBar: true,
-    webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
-    },
-  });
-
-  const startUrl = process.env.ELECTRON_START_URL || `file://${path.join(__dirname_dist, 'dist/index.html')}`;
-  videoWindow.loadURL(startUrl);
-
-  videoWindow.on('closed', () => {
-    videoWindow = null;
-  });
-}
-
-// IPC: Resizing window dynamically
-ipcMain.on('resize-window', (event, expand) => {
+// IPC Handlers
+ipcMain.on('toggle-main-window', () => {
   if (mainWindow) {
-    const [width] = mainWindow.getSize();
-    // Logic to handle expansion if you add sub-menus later
-    if (expand) {
-      mainWindow.setSize(width, 120, true);
+    if (mainWindow.isVisible()) {
+      mainWindow.hide();
     } else {
-      mainWindow.setSize(width, 90, true);
+      mainWindow.show();
+      mainWindow.focus();
     }
   }
 });
 
-// IPC: Toggle Video Window
-ipcMain.on('open-video-window', () => {
-  createVideoWindow();
+ipcMain.on('close-app', () => {
+  app.quit();
 });
 
 app.whenReady().then(() => {
   createMainWindow();
+  createFloatingWindow();
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createMainWindow();
+      createFloatingWindow();
+    }
   });
 });
 
