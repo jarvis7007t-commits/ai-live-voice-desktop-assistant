@@ -3,6 +3,8 @@
   "name": "gemini-live-vision-desktop",
   "private": true,
   "version": "1.0.0",
+  "description": "Desktop AI Assistant with Live Vision & Voice",
+  "author": "AI Developer",
   "main": "electron.js",
   "type": "module",
   "scripts": {
@@ -32,8 +34,20 @@
       "output": "release"
     },
     "win": {
-      "target": "portable",
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "icon": "https://cdn-icons-png.flaticon.com/512/2099/2099165.png"
-    }
+    },
+    "files": [
+      "dist/**/*",
+      "electron.js",
+      "package.json"
+    ]
   }
 }
