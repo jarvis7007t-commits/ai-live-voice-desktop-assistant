@@ -5,14 +5,18 @@ const path = require('path');
 let mainWindow;
 let videoWindow;
 
+// Configuration for URLs
+const ASSISTANT_URL = 'https://my-website.com/assistant';
+const VIDEO_URL = 'https://my-website.com/video';
+
 function createMainWindow() {
   const { width: screenWidth, height: screenHeight } = screen.getPrimaryDisplay().workAreaSize;
 
   mainWindow = new BrowserWindow({
     width: 320,
-    height: 100,
+    height: 60, // Start small
     x: screenWidth - 340,
-    y: screenHeight - 120,
+    y: screenHeight - 100,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -25,10 +29,8 @@ function createMainWindow() {
     },
   });
 
-  // In production, we would load the built index.html
-  // For development, we load the dev server URL
-  const startUrl = process.env.ELECTRON_START_URL || `file://${path.join(__dirname, './dist/index.html')}`;
-  mainWindow.loadURL(startUrl);
+  // Load the requested website URL directly
+  mainWindow.loadURL(ASSISTANT_URL);
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -53,13 +55,25 @@ function createVideoWindow() {
     },
   });
 
-  const startUrl = process.env.ELECTRON_START_URL || `file://${path.join(__dirname, './dist/index.html#video')}`;
-  videoWindow.loadURL(startUrl);
+  // Load the requested video URL directly
+  videoWindow.loadURL(VIDEO_URL);
 
   videoWindow.on('closed', () => {
     videoWindow = null;
   });
 }
+
+// Handle window resizing from renderer
+ipcMain.on('resize-window', (event, expand) => {
+  if (mainWindow) {
+    const [width] = mainWindow.getSize();
+    if (expand) {
+      mainWindow.setSize(width, 100, true);
+    } else {
+      mainWindow.setSize(width, 60, true);
+    }
+  }
+});
 
 // Handle video window requests from renderer
 ipcMain.on('open-video-window', () => {

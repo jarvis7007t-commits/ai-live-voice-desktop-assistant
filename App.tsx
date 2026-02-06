@@ -5,8 +5,7 @@ import { SessionStatus, LiveConfig } from './types';
 import { createBlob, decode, decodeAudioData } from './utils/audio-utils';
 import Visualizer from './components/Visualizer';
 
-// Check if we are running inside Electron
-// Cast window to any to access process property which is injected by Electron at runtime
+// Access Electron IPC if available
 const isElectron = typeof window !== 'undefined' && (window as any).process && (window as any).process.type;
 const ipcRenderer = isElectron ? (window as any).require('electron').ipcRenderer : null;
 
@@ -35,6 +34,8 @@ const App: React.FC = () => {
   const nextStartTimeRef = useRef(0);
 
   const stopSession = useCallback(() => {
+    if (ipcRenderer) ipcRenderer.send('resize-window', false);
+    
     if (sessionRef.current) sessionRef.current.close?.();
     sessionRef.current = null;
     if (audioNodesRef.current?.processor) audioNodesRef.current.processor.disconnect();
@@ -48,6 +49,8 @@ const App: React.FC = () => {
 
   const startSession = async () => {
     try {
+      if (ipcRenderer) ipcRenderer.send('resize-window', true);
+      
       setStatus(SessionStatus.CONNECTING);
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       if (!audioContextRef.current) {
@@ -110,42 +113,26 @@ const App: React.FC = () => {
         },
       });
       sessionRef.current = await sessionPromise;
-    } catch (err) { setStatus(SessionStatus.IDLE); }
+    } catch (err) { 
+      setStatus(SessionStatus.IDLE);
+      if (ipcRenderer) ipcRenderer.send('resize-window', false);
+    }
   };
 
   const handleVideoClick = () => {
     if (ipcRenderer) {
       ipcRenderer.send('open-video-window');
-    } else {
-      // Web fallback
-      setConfig(p => ({ ...p, isCameraEnabled: !p.isCameraEnabled }));
     }
   };
 
   const isConnected = status === SessionStatus.CONNECTED;
   const isInteracting = isUserTalking || isModelTalking;
 
-  // Render video feed in separate route if hash is #video
-  if (window.location.hash === '#video') {
-    return (
-      <div className="w-full h-full bg-black flex items-center justify-center text-cyan-400">
-         <div className="flex flex-col items-center">
-            <svg className="animate-pulse mb-4" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-               <path d="M23 7l-7 5 7 5V7z"></path>
-               <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
-            </svg>
-            <p className="font-mono text-sm tracking-widest">GEMINI VISION ACTIVE</p>
-         </div>
-      </div>
-    );
-  }
-
   return (
     <div 
       className={`lumina-capsule ${isConnected ? 'connected' : ''} ${isInteracting ? 'vibrating' : ''}`}
       style={{ WebkitAppRegion: 'drag' } as any}
     >
-      {/* Vortex Earth Button Section */}
       <div 
         className="section-vortex"
         onClick={isConnected ? stopSession : startSession}
@@ -159,7 +146,6 @@ const App: React.FC = () => {
         </svg>
       </div>
 
-      {/* Waveform Visualizer Section */}
       <Visualizer 
         isActive={isConnected} 
         isUserTalking={isUserTalking} 
@@ -167,9 +153,7 @@ const App: React.FC = () => {
         isMuted={config.isMuted} 
       />
 
-      {/* Control Icons Section */}
       <div className="section-controls" style={{ WebkitAppRegion: 'no-drag' } as any}>
-        {/* Call Button: Red when live active */}
         <div 
           className={`control-icon ${isConnected ? 'icon-active-red' : 'icon-inactive'}`}
           onClick={isConnected ? stopSession : startSession}
@@ -179,7 +163,6 @@ const App: React.FC = () => {
           </svg>
         </div>
 
-        {/* Microphone Button: Cyan glow when active, slashed when muted */}
         <div 
           className={`control-icon ${config.isMuted ? 'icon-inactive slashed' : 'icon-active-cyan'}`}
           onClick={() => setConfig(p => ({...p, isMuted: !p.isMuted}))}
@@ -192,7 +175,6 @@ const App: React.FC = () => {
           </svg>
         </div>
 
-        {/* Video Button: Trigger separate window */}
         <div 
           className={`control-icon ${config.isCameraEnabled ? 'icon-active-cyan' : 'icon-inactive'}`}
           onClick={handleVideoClick}
