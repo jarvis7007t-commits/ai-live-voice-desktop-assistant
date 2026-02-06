@@ -5,16 +5,14 @@ import { SessionStatus, LiveConfig } from './types';
 import { createBlob, decode, decodeAudioData } from './utils/audio-utils';
 import Visualizer from './components/Visualizer';
 
+// Access Electron IPC
+// Fix: Use type assertion to access process on window to avoid TypeScript property error
 const isElectron = typeof window !== 'undefined' && (window as any).process && (window as any).process.type;
 const ipcRenderer = isElectron ? (window as any).require('electron').ipcRenderer : null;
 
 const MODEL_NAME = 'gemini-2.5-flash-native-audio-preview-12-2025';
 
-interface AppProps {
-  isFloating?: boolean;
-}
-
-const App: React.FC<AppProps> = ({ isFloating = false }) => {
+const App: React.FC = () => {
   const [status, setStatus] = useState<SessionStatus>(SessionStatus.IDLE);
   const [config, setConfig] = useState<LiveConfig>({
     model: MODEL_NAME,
@@ -37,6 +35,8 @@ const App: React.FC<AppProps> = ({ isFloating = false }) => {
   const nextStartTimeRef = useRef(0);
 
   const stopSession = useCallback(() => {
+    if (ipcRenderer) ipcRenderer.send('resize-window', false);
+    
     if (sessionRef.current) sessionRef.current.close?.();
     sessionRef.current = null;
     if (audioNodesRef.current?.processor) audioNodesRef.current.processor.disconnect();
@@ -50,7 +50,10 @@ const App: React.FC<AppProps> = ({ isFloating = false }) => {
 
   const startSession = async () => {
     try {
+      if (ipcRenderer) ipcRenderer.send('resize-window', true);
+      
       setStatus(SessionStatus.CONNECTING);
+      // Initialize GoogleGenAI right before making the call as per guidelines
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       if (!audioContextRef.current) {
         audioContextRef.current = {
@@ -78,6 +81,7 @@ const App: React.FC<AppProps> = ({ isFloating = false }) => {
               const inputData = e.inputBuffer.getChannelData(0);
               const sum = inputData.reduce((a, b) => a + Math.abs(b), 0);
               setIsUserTalking(sum / inputData.length > 0.015);
+              // Send input only after the session connection is established
               sessionPromise.then(s => s.sendRealtimeInput({ media: createBlob(inputData) })).catch(() => {});
             };
             source.connect(scriptProcessor);
@@ -93,6 +97,7 @@ const App: React.FC<AppProps> = ({ isFloating = false }) => {
               const source = outputCtx.createBufferSource();
               source.buffer = audioBuffer;
               source.connect(outputCtx.destination);
+              // Use addEventListener as per guidelines for audio stream handling
               source.addEventListener('ended', () => {
                 audioSourcesRef.current.delete(source);
                 if (audioSourcesRef.current.size === 0) setIsModelTalking(false);
@@ -117,15 +122,14 @@ const App: React.FC<AppProps> = ({ isFloating = false }) => {
       sessionRef.current = await sessionPromise;
     } catch (err) { 
       setStatus(SessionStatus.IDLE);
+      if (ipcRenderer) ipcRenderer.send('resize-window', false);
     }
   };
 
-  const handleToggleMainWindow = () => {
-    if (ipcRenderer) ipcRenderer.send('toggle-main-window');
-  };
-
-  const handleCloseApp = () => {
-    if (ipcRenderer) ipcRenderer.send('close-app');
+  const handleVideoClick = () => {
+    if (ipcRenderer) {
+      ipcRenderer.send('open-video-window');
+    }
   };
 
   const isConnected = status === SessionStatus.CONNECTED;
@@ -133,7 +137,7 @@ const App: React.FC<AppProps> = ({ isFloating = false }) => {
 
   return (
     <div 
-      className={`lumina-capsule ${isConnected ? 'connected' : ''} ${isInteracting ? 'vibrating' : ''} ${isFloating ? 'floating-instance' : ''}`}
+      className={`lumina-capsule ${isConnected ? 'connected' : ''} ${isInteracting ? 'vibrating' : ''}`}
       style={{ WebkitAppRegion: 'drag' } as any}
     >
       <div 
@@ -157,18 +161,14 @@ const App: React.FC<AppProps> = ({ isFloating = false }) => {
       />
 
       <div className="section-controls" style={{ WebkitAppRegion: 'no-drag' } as any}>
-        {isFloating && (
-          <div 
-            className="control-icon icon-inactive"
-            onClick={handleToggleMainWindow}
-            title="Toggle Dashboard"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-              <line x1="9" y1="3" x2="9" y2="21"></line>
-            </svg>
-          </div>
-        )}
+        <div 
+          className={`control-icon ${isConnected ? 'icon-active-red' : 'icon-inactive'}`}
+          onClick={isConnected ? stopSession : startSession}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+          </svg>
+        </div>
 
         <div 
           className={`control-icon ${config.isMuted ? 'icon-inactive slashed' : 'icon-active-cyan'}`}
@@ -182,18 +182,15 @@ const App: React.FC<AppProps> = ({ isFloating = false }) => {
           </svg>
         </div>
 
-        {isFloating && (
-          <div 
-            className="control-icon icon-inactive hover:text-red-500"
-            onClick={handleCloseApp}
-            title="Exit Application"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-          </div>
-        )}
+        <div 
+          className={`control-icon ${config.isCameraEnabled ? 'icon-active-cyan' : 'icon-inactive'}`}
+          onClick={handleVideoClick}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M23 7l-7 5 7 5V7z"></path>
+            <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+          </svg>
+        </div>
       </div>
     </div>
   );
