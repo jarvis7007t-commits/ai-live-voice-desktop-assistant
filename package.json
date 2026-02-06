@@ -35,12 +35,21 @@
     },
     "win": {
       "target": "portable",
-      "icon": "icon.ico"
+      "icon": "icon.ico",
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "My Floating App"
     },
     "files": [
       "dist/**/*",
       "electron.js",
-      "package.json"
+      "package.json",
+      "icon.ico"
     ],
     "asar": true
   }
