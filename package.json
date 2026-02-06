@@ -6,13 +6,13 @@
   "description": "Desktop AI Assistant with Live Vision & Voice",
   "author": "AI Developer",
   "main": "electron.js",
-  "type": "module",
+  "type": "commonjs",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
     "electron:dev": "ELECTRON_START_URL=http://localhost:3000 electron .",
-    "electron:build": "npm run build && electron-builder"
+    "dist": "electron-builder"
   },
   "dependencies": {
     "react-dom": "^19.2.3",
@@ -29,25 +29,19 @@
   },
   "build": {
     "appId": "com.gemini.livevision",
-    "productName": "Gemini Live Vision",
+    "productName": "My Floating App",
     "directories": {
-      "output": "release"
+      "output": "dist-electron"
     },
     "win": {
-      "target": [
-        {
-          "target": "portable",
-          "arch": [
-            "x64"
-          ]
-        }
-      ],
-      "icon": "https://cdn-icons-png.flaticon.com/512/2099/2099165.png"
+      "target": "portable",
+      "icon": "icon.ico"
     },
     "files": [
       "dist/**/*",
       "electron.js",
       "package.json"
-    ]
+    ],
+    "asar": true
   }
 }

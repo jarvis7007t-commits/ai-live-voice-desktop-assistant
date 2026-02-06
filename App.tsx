@@ -6,7 +6,6 @@ import { createBlob, decode, decodeAudioData } from './utils/audio-utils';
 import Visualizer from './components/Visualizer';
 
 // Access Electron IPC
-// Fix: Use type assertion to access process on window to avoid TypeScript property error
 const isElectron = typeof window !== 'undefined' && (window as any).process && (window as any).process.type;
 const ipcRenderer = isElectron ? (window as any).require('electron').ipcRenderer : null;
 
@@ -53,7 +52,6 @@ const App: React.FC = () => {
       if (ipcRenderer) ipcRenderer.send('resize-window', true);
       
       setStatus(SessionStatus.CONNECTING);
-      // Initialize GoogleGenAI right before making the call as per guidelines
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       if (!audioContextRef.current) {
         audioContextRef.current = {
@@ -81,7 +79,6 @@ const App: React.FC = () => {
               const inputData = e.inputBuffer.getChannelData(0);
               const sum = inputData.reduce((a, b) => a + Math.abs(b), 0);
               setIsUserTalking(sum / inputData.length > 0.015);
-              // Send input only after the session connection is established
               sessionPromise.then(s => s.sendRealtimeInput({ media: createBlob(inputData) })).catch(() => {});
             };
             source.connect(scriptProcessor);
@@ -97,7 +94,6 @@ const App: React.FC = () => {
               const source = outputCtx.createBufferSource();
               source.buffer = audioBuffer;
               source.connect(outputCtx.destination);
-              // Use addEventListener as per guidelines for audio stream handling
               source.addEventListener('ended', () => {
                 audioSourcesRef.current.delete(source);
                 if (audioSourcesRef.current.size === 0) setIsModelTalking(false);

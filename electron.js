@@ -1,22 +1,25 @@
 
 const { app, BrowserWindow, ipcMain, screen } = require('electron');
 const path = require('path');
-const { fileURLToPath } = require('url');
-
-// Handle ES modules __dirname equivalent
-const __dirname_dist = path.resolve();
 
 let mainWindow;
 let videoWindow;
 
+// आपकी Vercel लिंक यहाँ डालें
+const VERCEL_URL = 'https://your-vercel-link.vercel.app';
+
 function createMainWindow() {
   const { width: screenWidth, height: screenHeight } = screen.getPrimaryDisplay().workAreaSize;
 
+  const winWidth = 320;
+  const winHeight = 80;
+  const margin = 20;
+
   mainWindow = new BrowserWindow({
-    width: 320,
-    height: 90, // Slightly taller to accommodate the glow/shadows
-    x: screenWidth - 340,
-    y: screenHeight - 120,
+    width: winWidth,
+    height: winHeight,
+    x: screenWidth - winWidth - margin,
+    y: screenHeight - winHeight - margin,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -28,16 +31,16 @@ function createMainWindow() {
       nodeIntegration: true,
       contextIsolation: false,
       backgroundThrottling: false,
-      webSecurity: false // Necessary for local file loading with some API configs
+      webSecurity: false
     },
   });
 
-  // Use environment variable for dev, fallback to local file for prod
-  const startUrl = process.env.ELECTRON_START_URL || `file://${path.join(__dirname_dist, 'dist/index.html')}`;
-  mainWindow.loadURL(startUrl);
+  // विंडो को हमेशा ऊपर रखने के लिए (Taskbar के भी ऊपर)
+  mainWindow.setAlwaysOnTop(true, 'screen-saver');
 
-  // Allow clicking through transparent areas if needed (optional)
-  // mainWindow.setIgnoreMouseEvents(false);
+  // डेवलपमेंट में लोकलहोस्ट और प्रोडक्शन में Vercel लिंक लोड करें
+  const startUrl = process.env.ELECTRON_START_URL || VERCEL_URL;
+  mainWindow.loadURL(startUrl);
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -62,7 +65,7 @@ function createVideoWindow() {
     },
   });
 
-  const startUrl = process.env.ELECTRON_START_URL || `file://${path.join(__dirname_dist, 'dist/index.html')}`;
+  const startUrl = process.env.ELECTRON_START_URL || VERCEL_URL;
   videoWindow.loadURL(startUrl);
 
   videoWindow.on('closed', () => {
@@ -70,20 +73,19 @@ function createVideoWindow() {
   });
 }
 
-// IPC: Resizing window dynamically
+// IPC: विंडो साइज बदलना
 ipcMain.on('resize-window', (event, expand) => {
   if (mainWindow) {
     const [width] = mainWindow.getSize();
-    // Logic to handle expansion if you add sub-menus later
     if (expand) {
-      mainWindow.setSize(width, 120, true);
+      mainWindow.setSize(width, 100, true);
     } else {
-      mainWindow.setSize(width, 90, true);
+      mainWindow.setSize(width, 80, true);
     }
   }
 });
 
-// IPC: Toggle Video Window
+// IPC: वीडियो विंडो खोलना
 ipcMain.on('open-video-window', () => {
   createVideoWindow();
 });
