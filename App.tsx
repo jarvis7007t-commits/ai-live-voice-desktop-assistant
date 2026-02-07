@@ -15,7 +15,6 @@ const App: React.FC = () => {
   const queryParams = new URLSearchParams(window.location.search);
   const isCameraView = queryParams.get('view') === 'camera';
 
-  // State Sync Channel
   const syncChannel = useMemo(() => new BroadcastChannel('gemini-sync'), []);
 
   // --- VIDEO CALL WINDOW UI ---
@@ -27,7 +26,7 @@ const App: React.FC = () => {
     const [isConnected, setIsConnected] = useState(false);
     const [seconds, setSeconds] = useState(0);
     const [isModelTalking, setIsModelTalking] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const [cameraError, setCameraError] = useState<string | null>(null);
 
     useEffect(() => {
       syncChannel.onmessage = (e) => {
@@ -51,27 +50,17 @@ const App: React.FC = () => {
     useEffect(() => {
       async function setupCam() {
         try {
-          // Check for devices first
           const devices = await navigator.mediaDevices.enumerateDevices();
-          const hasVideo = devices.some(device => device.kind === 'videoinput');
-          
-          if (!hasVideo) {
-            setError("No camera detected on this system.");
-            return;
-          }
-
-          // Attempt with flexible constraints
-          const stream = await navigator.mediaDevices.getUserMedia({ 
-            video: { 
-              width: { ideal: 1280, min: 640 }, 
-              height: { ideal: 720, min: 480 } 
-            } 
-          }).catch(() => navigator.mediaDevices.getUserMedia({ video: true }));
-
+          const hasVideo = devices.some(d => d.kind === 'videoinput');
+          if (!hasVideo) throw new Error("NotFoundError");
+          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
           if (camRef.current) camRef.current.srcObject = stream;
         } catch (e: any) {
-          console.error("Video Call Permission Error:", e);
-          setError(e.message || "Failed to access camera.");
+          const msg = (e.name === 'NotFoundError' || e.message?.includes('device not found'))
+            ? "No physical camera detected."
+            : "Camera access denied.";
+          setCameraError(msg);
+          syncChannel.postMessage({ type: 'COMMAND', action: 'CAM_ERROR', value: msg });
         }
       }
       setupCam();
@@ -87,122 +76,33 @@ const App: React.FC = () => {
       return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     };
 
-    const handleEndCall = () => {
-      syncChannel.postMessage({ type: 'COMMAND', action: 'STOP' });
-      window.close();
-    };
-
-    const toggleMute = () => {
-      const nextMute = !isMuted;
-      setIsMuted(nextMute);
-      syncChannel.postMessage({ type: 'COMMAND', action: 'TOGGLE_MUTE', value: nextMute });
-    };
-
     return (
       <div className="relative w-full h-full bg-[#05070a] flex items-center justify-center overflow-hidden font-sans select-none text-white">
-        <div className={`absolute inset-0 transition-all duration-700 ${isConnected && !error ? 'scale-100 opacity-100' : 'scale-110 opacity-40 blur-md'}`}>
-           <video 
-            ref={camRef} 
-            autoPlay 
-            playsInline 
-            muted 
-            className="w-full h-full object-cover transition-transform duration-500 cubic-bezier(0.2, 1, 0.3, 1)"
-            style={{ transform: `scale(${zoom}) ${isMirrored ? 'scaleX(-1)' : 'scaleX(1)'}` }}
-          />
-        </div>
-
-        {error && (
-          <div className="z-30 flex flex-col items-center gap-4 bg-black/60 p-8 rounded-2xl border border-red-500/30 backdrop-blur-md">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-            <div className="text-center">
-              <h2 className="text-xl font-bold text-red-400">Camera Unavailable</h2>
-              <p className="text-sm text-zinc-400 mt-1 max-w-xs">{error}</p>
-            </div>
-            <button onClick={() => window.location.reload()} className="mt-2 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-xs font-bold transition-colors">RETRY CONNECTION</button>
-          </div>
-        )}
-
-        {isModelTalking && !error && (
-          <div className="absolute inset-0 pointer-events-none border-[6px] border-cyan-500/30 animate-pulse transition-opacity duration-300">
-            <div className="absolute inset-0 shadow-[inset_0_0_100px_rgba(34,211,238,0.2)]"></div>
-          </div>
-        )}
-
-        <div className="absolute top-0 left-0 right-0 p-6 flex justify-between items-start bg-gradient-to-b from-black/80 to-transparent">
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-3">
-              <div className={`w-2.5 h-2.5 rounded-full ${isConnected ? 'bg-cyan-500 animate-pulse shadow-[0_0_10px_rgba(34,211,238,0.8)]' : 'bg-zinc-500'}`}></div>
-              <h1 className="text-lg font-semibold tracking-tight">Gemini Live Vision</h1>
-            </div>
-            <p className="text-[11px] uppercase tracking-widest text-zinc-400 font-bold ml-5">
-              {isConnected ? `In Call • ${formatTime(seconds)}` : 'Connecting to AI...'}
-            </p>
-          </div>
-          <div className="bg-black/40 backdrop-blur-md px-4 py-2 rounded-xl border border-white/10 flex items-center gap-4">
-             <div className="flex flex-col items-end">
-                <span className="text-[9px] uppercase text-zinc-500 font-bold">Latency</span>
-                <span className="text-xs font-mono text-cyan-400">~140ms</span>
+        <div className={`absolute inset-0 transition-all duration-700 ${isConnected ? 'scale-100 opacity-100' : 'scale-110 opacity-40 blur-md'}`}>
+           {!cameraError ? (
+             <video ref={camRef} autoPlay playsInline muted className="w-full h-full object-cover" style={{ transform: `scale(${zoom}) ${isMirrored ? 'scaleX(-1)' : 'scaleX(1)'}` }} />
+           ) : (
+             <div className="w-full h-full flex flex-col items-center justify-center bg-zinc-950 text-zinc-500 text-center px-10">
+               <svg className="w-16 h-16 mb-4 opacity-20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/><line x1="1" y1="5" x2="23" y2="19"/></svg>
+               <h2 className="text-sm font-bold uppercase tracking-widest text-red-500/80 mb-2">Hardware Error</h2>
+               <p className="text-xs text-zinc-500">{cameraError}</p>
              </div>
-             <div className="w-[1px] h-6 bg-white/10"></div>
-             <div className="flex flex-col items-end">
-                <span className="text-[9px] uppercase text-zinc-500 font-bold">Model</span>
-                <span className="text-xs font-mono text-white">2.5 FLASH</span>
-             </div>
-          </div>
+           )}
         </div>
-
-        {!isConnected && !error && (
-          <div className="z-20 flex flex-col items-center gap-6">
-            <div className="relative">
-              <div className="w-24 h-24 border-2 border-cyan-500/20 rounded-full animate-ping"></div>
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-16 h-16 border-t-2 border-cyan-400 rounded-full animate-spin"></div>
-              </div>
-            </div>
-            <span className="text-cyan-400 font-bold tracking-[0.2em] animate-pulse">ESTABLISHING LINK</span>
-          </div>
-        )}
-
-        <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex items-center gap-4 bg-zinc-900/90 backdrop-blur-2xl px-6 py-4 rounded-[2.5rem] border border-white/10 shadow-2xl transition-transform hover:scale-105 duration-300">
-          <button 
-            onClick={toggleMute}
-            className={`p-4 rounded-full transition-all ${isMuted ? 'bg-red-500 text-white shadow-lg shadow-red-500/40' : 'bg-white/5 hover:bg-white/10 text-white'}`}
-          >
-            {isMuted ? (
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
-            ) : (
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
-            )}
+        {isModelTalking && <div className="absolute inset-0 pointer-events-none border-[6px] border-cyan-500/30 animate-pulse" />}
+        <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex items-center gap-4 bg-zinc-900/90 backdrop-blur-2xl px-6 py-4 rounded-full border border-white/10 shadow-2xl">
+          <button onClick={() => syncChannel.postMessage({ type: 'COMMAND', action: 'TOGGLE_MUTE', value: !isMuted })} className={`p-4 rounded-full ${isMuted ? 'bg-red-500 text-white' : 'bg-white/5 text-white'}`}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
           </button>
-          <div className="w-[1px] h-10 bg-white/10 mx-2"></div>
-          <div className="flex items-center bg-white/5 rounded-full p-1 border border-white/5">
-            <button onClick={() => setZoom(Math.max(1, zoom - 0.5))} className="p-3 hover:text-cyan-400 transition-colors"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg></button>
-            <span className="text-[10px] font-mono w-10 text-center font-bold text-zinc-400">{Math.round(zoom * 100)}%</span>
-            <button onClick={() => setZoom(Math.min(4, zoom + 0.5))} className="p-3 hover:text-cyan-400 transition-colors"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg></button>
-          </div>
-          <button 
-            onClick={() => setIsMirrored(!isMirrored)}
-            className={`p-4 rounded-full transition-all ${isMirrored ? 'text-cyan-400 bg-cyan-400/10' : 'text-zinc-400 hover:bg-white/5'}`}
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3v18M12 3L7 8M12 3l5 5M12 21l-5-5M12 21l5-5"/></svg>
+          <button onClick={() => { syncChannel.postMessage({ type: 'COMMAND', action: 'STOP' }); window.close(); }} className="p-4 bg-red-600 text-white rounded-full">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="rotate-[135deg]"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
           </button>
-          <div className="w-[1px] h-10 bg-white/10 mx-2"></div>
-          <button 
-            onClick={handleEndCall}
-            className="p-4 bg-red-600 hover:bg-red-500 text-white rounded-full shadow-lg shadow-red-600/30 transition-all hover:scale-110 active:scale-95"
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="rotate-[135deg]"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-          </button>
-        </div>
-
-        <div className="absolute bottom-32 left-1/2 -translate-x-1/2 w-64 h-12 opacity-60">
-           <Visualizer isActive={isConnected} isUserTalking={false} isModelTalking={isModelTalking} isMuted={isMuted} />
         </div>
       </div>
     );
   }
 
-  // --- MAIN ASSISTANT LOGIC (CAPSULE) ---
+  // --- MAIN ASSISTANT LOGIC (HORIZONTAL CAPSULE) ---
   const [status, setStatus] = useState<SessionStatus>(SessionStatus.IDLE);
   const [config, setConfig] = useState<LiveConfig>({
     model: MODEL_NAME,
@@ -214,6 +114,8 @@ const App: React.FC = () => {
   
   const [isUserTalking, setIsUserTalking] = useState(false);
   const [isModelTalking, setIsModelTalking] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [isCameraHardwareMissing, setIsCameraHardwareMissing] = useState(false);
   
   const isMutedRef = useRef(config.isMuted);
   const isCameraEnabledRef = useRef(config.isCameraEnabled);
@@ -230,14 +132,8 @@ const App: React.FC = () => {
   const audioSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const nextStartTimeRef = useRef(0);
 
-  // Sync state to Video Window
   useEffect(() => {
-    syncChannel.postMessage({ 
-      type: 'STATE_UPDATE', 
-      isMuted: config.isMuted, 
-      status,
-      isModelTalking 
-    });
+    syncChannel.postMessage({ type: 'STATE_UPDATE', isMuted: config.isMuted, status, isModelTalking });
   }, [config.isMuted, status, isModelTalking, syncChannel]);
 
   useEffect(() => {
@@ -245,6 +141,11 @@ const App: React.FC = () => {
       if (e.data.type === 'COMMAND') {
         if (e.data.action === 'STOP') stopSession();
         if (e.data.action === 'TOGGLE_MUTE') setConfig(c => ({...c, isMuted: e.data.value}));
+        if (e.data.action === 'CAM_ERROR') {
+            setStatusMessage(e.data.value);
+            setTimeout(() => setStatusMessage(null), 3000);
+            setConfig(c => ({...c, isCameraEnabled: false}));
+        }
       }
     };
   }, [syncChannel]);
@@ -252,46 +153,31 @@ const App: React.FC = () => {
   const stopSession = useCallback(() => {
     if (ipcRenderer) ipcRenderer.send('resize-window', false);
     if (frameIntervalRef.current) window.clearInterval(frameIntervalRef.current);
-    
     if (sessionRef.current) sessionRef.current.close?.();
     sessionRef.current = null;
-
     if (audioNodesRef.current?.processor) audioNodesRef.current.processor.disconnect();
     if (audioNodesRef.current?.source) audioNodesRef.current.source.disconnect();
-    
     audioSourcesRef.current.forEach(s => { try { s.stop(); } catch(e) {} });
     audioSourcesRef.current.clear();
-
     const stream = videoRef.current?.srcObject as MediaStream;
     stream?.getTracks().forEach(track => track.stop());
-
     setStatus(SessionStatus.IDLE);
     setIsUserTalking(false);
     setIsModelTalking(false);
     setConfig(c => ({...c, isCameraEnabled: false}));
+    setIsCameraHardwareMissing(false);
   }, [ipcRenderer]);
 
   const startVisionLoop = useCallback((session: any) => {
     if (frameIntervalRef.current) window.clearInterval(frameIntervalRef.current);
-    
     frameIntervalRef.current = window.setInterval(async () => {
       if (!isCameraEnabledRef.current || !videoRef.current || !canvasRef.current) return;
-
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      const ctx = canvas.getContext('2d');
+      const ctx = canvasRef.current.getContext('2d');
       if (!ctx) return;
-
-      canvas.width = 640; 
-      canvas.height = 480;
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-      const base64Data = canvas.toDataURL('image/jpeg', 0.5).split(',')[1];
-      if (session) {
-        session.sendRealtimeInput({
-          media: { data: base64Data, mimeType: 'image/jpeg' }
-        });
-      }
+      canvasRef.current.width = 640; canvasRef.current.height = 480;
+      ctx.drawImage(videoRef.current, 0, 0, 640, 480);
+      const base64Data = canvasRef.current.toDataURL('image/jpeg', 0.5).split(',')[1];
+      if (session) session.sendRealtimeInput({ media: { data: base64Data, mimeType: 'image/jpeg' } });
     }, 1000 / FRAME_RATE);
   }, []);
 
@@ -299,37 +185,22 @@ const App: React.FC = () => {
     try {
       if (ipcRenderer) ipcRenderer.send('resize-window', true);
       setStatus(SessionStatus.CONNECTING);
-
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      
       if (!audioContextRef.current) {
         audioContextRef.current = {
           input: new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 }),
           output: new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 }),
         };
       }
-      
       const { input: inputCtx, output: outputCtx } = audioContextRef.current;
       await inputCtx.resume(); await outputCtx.resume();
-
       const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-      if (config.isCameraEnabled) {
-        try {
-          const videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
-          if (videoRef.current) videoRef.current.srcObject = videoStream;
-        } catch (camErr) {
-          console.warn("Failed to start session camera, continuing with audio only:", camErr);
-          setConfig(c => ({...c, isCameraEnabled: false}));
-        }
-      }
-
       const sessionPromise = ai.live.connect({
         model: MODEL_NAME,
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: config.voiceName } } },
-          systemInstruction: "You are a highly advanced AI video call companion. You can see the user and talk to them in real-time. Be helpful, concise, and friendly."
+          systemInstruction: "You are a helpful AI desktop assistant. Always-on-top horizontal pill UI."
         },
         callbacks: {
           onopen: () => {
@@ -346,7 +217,6 @@ const App: React.FC = () => {
             source.connect(scriptProcessor);
             scriptProcessor.connect(inputCtx.destination);
             audioNodesRef.current = { source, processor: scriptProcessor };
-            sessionPromise.then(s => startVisionLoop(s));
           },
           onmessage: async (message: LiveServerMessage) => {
             const audioData = message.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
@@ -365,60 +235,38 @@ const App: React.FC = () => {
               nextStartTimeRef.current += audioBuffer.duration;
               audioSourcesRef.current.add(source);
             }
-            if (message.serverContent?.interrupted) {
-              audioSourcesRef.current.forEach(s => { try { s.stop(); } catch(e) {} });
-              audioSourcesRef.current.clear();
-              setIsModelTalking(false);
-              nextStartTimeRef.current = 0;
-            }
           },
-          onerror: (e) => { console.error(e); stopSession(); },
+          onerror: (e) => stopSession(),
           onclose: () => stopSession(),
         },
       });
       sessionRef.current = await sessionPromise;
-    } catch (err) { 
-      console.error(err);
+    } catch (err: any) { 
       setStatus(SessionStatus.IDLE);
     }
   };
 
   const toggleCamera = async () => {
     const nextState = !config.isCameraEnabled;
-    
     if (nextState) {
       try {
         const devices = await navigator.mediaDevices.enumerateDevices();
-        const hasVideo = devices.some(device => device.kind === 'videoinput');
-        
-        if (!hasVideo) {
-          alert("No camera detected. Please plug in a camera and try again.");
-          return;
-        }
-
+        if (!devices.some(d => d.kind === 'videoinput')) throw new Error('NotFoundError');
+        setConfig(p => ({...p, isCameraEnabled: true}));
+        if (ipcRenderer) ipcRenderer.send('open-video-window');
         const stream = await navigator.mediaDevices.getUserMedia({ video: true });
         if (videoRef.current) videoRef.current.srcObject = stream;
-        
-        setConfig(p => ({...p, isCameraEnabled: true}));
-        
-        if (ipcRenderer) {
-          ipcRenderer.send('open-video-window');
-        }
-
-        if (status === SessionStatus.CONNECTED && sessionRef.current) {
-          startVisionLoop(sessionRef.current);
-        }
+        if (status === SessionStatus.CONNECTED && sessionRef.current) startVisionLoop(sessionRef.current);
       } catch (e: any) {
-        console.error("Camera error:", e);
-        const msg = e.name === 'NotFoundError' ? "Camera not found." : "Could not access camera.";
-        alert(msg);
+        setIsCameraHardwareMissing(true);
+        setStatusMessage("No Camera Found");
+        setTimeout(() => { setStatusMessage(null); setIsCameraHardwareMissing(false); }, 3000);
         setConfig(p => ({...p, isCameraEnabled: false}));
       }
     } else {
+      setConfig(p => ({...p, isCameraEnabled: false}));
       const stream = videoRef.current?.srcObject as MediaStream;
       stream?.getTracks().forEach(track => track.stop());
-      if (frameIntervalRef.current) window.clearInterval(frameIntervalRef.current);
-      setConfig(p => ({...p, isCameraEnabled: false}));
     }
   };
 
@@ -426,61 +274,35 @@ const App: React.FC = () => {
   const isInteracting = isUserTalking || isModelTalking;
 
   return (
-    <div 
-      className={`lumina-capsule ${isConnected ? 'connected' : ''} ${isInteracting ? 'vibrating' : ''}`}
-      style={{ WebkitAppRegion: 'drag' } as any}
-    >
+    <div className={`lumina-capsule ${isConnected ? 'connected' : ''} ${isInteracting ? 'vibrating' : ''}`} style={{ WebkitAppRegion: 'drag' } as any}>
       <video ref={videoRef} autoPlay playsInline muted className="hidden" />
       <canvas ref={canvasRef} className="hidden" />
 
-      <div 
-        className="section-vortex"
-        onClick={isConnected ? stopSession : startSession}
-        style={{ WebkitAppRegion: 'no-drag' } as any}
-      >
+      {/* Vortex Icon (Left) */}
+      <div className="section-vortex" onClick={isConnected ? stopSession : startSession} style={{ WebkitAppRegion: 'no-drag' } as any}>
         <div className="vortex-glow"></div>
-        <svg className="globe-overlay" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-          <circle cx="12" cy="12" r="10"></circle>
-          <line x1="2" y1="12" x2="22" y2="12"></line>
-          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
-        </svg>
+        <svg className="globe-overlay" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
       </div>
 
-      <div className="flex-grow flex items-center justify-center px-4" style={{ WebkitAppRegion: 'drag' } as any}>
-        <Visualizer 
-          isActive={isConnected} 
-          isUserTalking={isUserTalking} 
-          isModelTalking={isModelTalking} 
-          isMuted={config.isMuted} 
-        />
+      {/* Visualizer (Center Area) */}
+      <div className="flex-grow flex items-center justify-center px-4 overflow-hidden">
+        <Visualizer isActive={isConnected} isUserTalking={isUserTalking} isModelTalking={isModelTalking} isMuted={config.isMuted} />
       </div>
 
+      {/* Controls (Right) */}
       <div className="section-controls" style={{ WebkitAppRegion: 'no-drag' } as any}>
-        <div 
-          className={`control-icon ${isConnected ? 'icon-active-red' : 'icon-inactive'}`}
-          onClick={isConnected ? stopSession : startSession}
-          title={isConnected ? "End Call" : "Call AI"}
-        >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
-             <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
-          </svg>
-        </div>
-
-        <div 
-          className={`control-icon ${config.isMuted ? 'icon-inactive slashed' : 'icon-active-cyan'}`}
-          onClick={() => setConfig(p => ({...p, isMuted: !p.isMuted}))}
-        >
+        <div className={`control-icon ${config.isMuted ? 'icon-inactive slashed' : 'icon-active-cyan'}`} onClick={() => setConfig(p => ({...p, isMuted: !p.isMuted}))}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
         </div>
-
-        <div 
-          className={`control-icon ${config.isCameraEnabled ? 'icon-active-cyan' : 'icon-inactive'}`}
-          onClick={toggleCamera}
-          title="Enable Vision"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
+        <div className={`control-icon ${isCameraHardwareMissing ? 'text-amber-500' : config.isCameraEnabled ? 'icon-active-cyan' : 'icon-inactive'}`} onClick={toggleCamera}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+        </div>
+        <div className={`control-icon ${isConnected ? 'icon-active-red' : 'icon-inactive'}`} onClick={isConnected ? stopSession : startSession}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
         </div>
       </div>
+
+      {statusMessage && <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-zinc-800 text-cyan-400 text-[9px] font-bold px-3 py-1 rounded-full border border-cyan-400/30 whitespace-nowrap">{statusMessage}</div>}
     </div>
   );
 };

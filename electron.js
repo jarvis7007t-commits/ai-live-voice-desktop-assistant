@@ -7,18 +7,12 @@ let videoWindow;
 let tray = null;
 let isQuiting = false;
 
-// Update this to your deployed URL if not running locally
-const VERCEL_URL = 'http://localhost:3000';
+// आपकी Vercel लिंक (बिल्ड के बाद इसे अपने Vercel URL से बदलें)
+const VERCEL_URL = 'https://your-vercel-link.vercel.app';
 
 function createTray() {
   const iconPath = path.join(__dirname, 'icon.ico');
-  // If icon doesn't exist, this might fail, using a placeholder check or try/catch is safer in production
-  try {
-    tray = new Tray(iconPath);
-  } catch (e) {
-    console.warn("Tray icon not found, skipping tray creation.");
-    return;
-  }
+  tray = new Tray(iconPath);
   
   const contextMenu = Menu.buildFromTemplate([
     { 
@@ -40,7 +34,7 @@ function createTray() {
     }
   ]);
 
-  tray.setToolTip('Gemini Live Assistant');
+  tray.setToolTip('My Floating AI Assistant');
   tray.setContextMenu(contextMenu);
 
   tray.on('double-click', () => {
@@ -51,9 +45,9 @@ function createTray() {
 function createMainWindow() {
   const { width: screenWidth, height: screenHeight } = screen.getPrimaryDisplay().workAreaSize;
 
-  const winWidth = 400;
-  const winHeight = 100;
-  const margin = 30;
+  const winWidth = 320;
+  const winHeight = 80;
+  const margin = 20;
 
   mainWindow = new BrowserWindow({
     width: winWidth,
@@ -74,7 +68,6 @@ function createMainWindow() {
     },
   });
 
-  // Level 'screen-saver' keeps it above almost everything
   mainWindow.setAlwaysOnTop(true, 'screen-saver');
 
   const startUrl = process.env.ELECTRON_START_URL || VERCEL_URL;
@@ -103,7 +96,7 @@ function createVideoWindow() {
   videoWindow = new BrowserWindow({
     width: 640,
     height: 480,
-    title: "Live Vision Feed",
+    title: "Live Camera Feed",
     autoHideMenuBar: true,
     backgroundColor: '#000000',
     webPreferences: {
@@ -113,6 +106,7 @@ function createVideoWindow() {
   });
 
   const baseAppUrl = process.env.ELECTRON_START_URL || VERCEL_URL;
+  // हम एक क्वेरी पैरामीटर भेज रहे हैं ताकि App.tsx समझ सके कि इसे केवल कैमरा दिखाना है
   const videoUrl = baseAppUrl.includes('?') ? `${baseAppUrl}&view=camera` : `${baseAppUrl}?view=camera`;
   
   videoWindow.loadURL(videoUrl);
@@ -122,14 +116,23 @@ function createVideoWindow() {
   });
 }
 
+function setupAutostart() {
+  // डेवलपमेंट के दौरान इसे स्किप किया जा सकता है
+  if (app.isPackaged) {
+    app.setLoginItemSettings({
+      openAtLogin: true,
+      path: app.getPath('exe')
+    });
+  }
+}
+
 ipcMain.on('resize-window', (event, expand) => {
   if (mainWindow) {
     const [width] = mainWindow.getSize();
-    // Providing a bit more vertical space for glows and animations when connected
     if (expand) {
-      mainWindow.setSize(width, 120, true);
-    } else {
       mainWindow.setSize(width, 100, true);
+    } else {
+      mainWindow.setSize(width, 80, true);
     }
   }
 });
@@ -141,6 +144,7 @@ ipcMain.on('open-video-window', () => {
 app.whenReady().then(() => {
   createMainWindow();
   createTray();
+  setupAutostart();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
@@ -150,7 +154,7 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
-    // App stays in tray
+    // ऐप ट्रे में चलता रहेगा
   }
 });
 
