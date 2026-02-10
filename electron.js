@@ -2,12 +2,20 @@
 const { app, BrowserWindow, ipcMain, screen, Tray, Menu } = require('electron');
 const path = require('path');
 
+// NOTE: In a real production environment, you would: npm install robotjs
+// For this implementation, we use a try-catch to handle environments where native modules might be restricted.
+let robot;
+try {
+  robot = require('robotjs');
+} catch (e) {
+  console.warn("RobotJS not found. Automation will be logged but not executed.");
+}
+
 let mainWindow;
 let videoWindow;
 let tray = null;
 let isQuiting = false;
 
-// आपकी Vercel लिंक (बिल्ड के बाद इसे अपने Vercel URL से बदलें)
 const VERCEL_URL = 'https://your-vercel-link.vercel.app';
 
 function createTray() {
@@ -15,38 +23,19 @@ function createTray() {
   tray = new Tray(iconPath);
   
   const contextMenu = Menu.buildFromTemplate([
-    { 
-      label: 'Show Assistant', 
-      click: () => {
-        if (mainWindow) {
-          mainWindow.show();
-          mainWindow.focus();
-        }
-      } 
-    },
+    { label: 'Show Assistant', click: () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } } },
     { type: 'separator' },
-    { 
-      label: 'Quit Entirely', 
-      click: () => {
-        isQuiting = true;
-        app.quit();
-      } 
-    }
+    { label: 'Quit Entirely', click: () => { isQuiting = true; app.quit(); } }
   ]);
 
-  tray.setToolTip('My Floating AI Assistant');
+  tray.setToolTip('Lumina AI Assistant');
   tray.setContextMenu(contextMenu);
-
-  tray.on('double-click', () => {
-    if (mainWindow) mainWindow.show();
-  });
 }
 
 function createMainWindow() {
   const { width: screenWidth, height: screenHeight } = screen.getPrimaryDisplay().workAreaSize;
-
-  const winWidth = 320;
-  const winHeight = 80;
+  const winWidth = 360;
+  const winHeight = 100;
   const margin = 20;
 
   mainWindow = new BrowserWindow({
@@ -69,7 +58,6 @@ function createMainWindow() {
   });
 
   mainWindow.setAlwaysOnTop(true, 'screen-saver');
-
   const startUrl = process.env.ELECTRON_START_URL || VERCEL_URL;
   mainWindow.loadURL(startUrl);
 
@@ -78,86 +66,67 @@ function createMainWindow() {
       event.preventDefault();
       mainWindow.hide();
     }
-    return false;
-  });
-
-  mainWindow.on('closed', () => {
-    mainWindow = null;
-    if (videoWindow) videoWindow.close();
   });
 }
 
-function createVideoWindow() {
-  if (videoWindow) {
-    videoWindow.focus();
-    return;
+// --- Automation IPC Handlers ---
+ipcMain.handle('automation:move', (event, { x, y }) => {
+  console.log(`Automation: Moving mouse to ${x}, ${y}`);
+  if (robot) {
+    const { width, height } = screen.getPrimaryDisplay().size;
+    // Map normalized 0-1000 coordinates if Gemini uses them, or use absolute
+    robot.moveMouse(x, y);
   }
+  return "ok";
+});
 
-  videoWindow = new BrowserWindow({
-    width: 640,
-    height: 480,
-    title: "Live Camera Feed",
-    autoHideMenuBar: true,
-    backgroundColor: '#000000',
-    webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
-    },
-  });
-
-  const baseAppUrl = process.env.ELECTRON_START_URL || VERCEL_URL;
-  // हम एक क्वेरी पैरामीटर भेज रहे हैं ताकि App.tsx समझ सके कि इसे केवल कैमरा दिखाना है
-  const videoUrl = baseAppUrl.includes('?') ? `${baseAppUrl}&view=camera` : `${baseAppUrl}?view=camera`;
-  
-  videoWindow.loadURL(videoUrl);
-
-  videoWindow.on('closed', () => {
-    videoWindow = null;
-  });
-}
-
-function setupAutostart() {
-  // डेवलपमेंट के दौरान इसे स्किप किया जा सकता है
-  if (app.isPackaged) {
-    app.setLoginItemSettings({
-      openAtLogin: true,
-      path: app.getPath('exe')
-    });
+ipcMain.handle('automation:click', (event, { button, double }) => {
+  console.log(`Automation: Clicking ${button}`);
+  if (robot) {
+    robot.mouseClick(button || 'left', double || false);
   }
-}
+  return "ok";
+});
+
+ipcMain.handle('automation:type', (event, { text }) => {
+  console.log(`Automation: Typing "${text}"`);
+  if (robot) {
+    robot.typeString(text);
+  }
+  return "ok";
+});
+
+ipcMain.handle('automation:scroll', (event, { direction, amount }) => {
+  console.log(`Automation: Scrolling ${direction}`);
+  if (robot) {
+    // robotjs scroll direction is y, x. y is up/down.
+    robot.scrollMouse(0, direction === 'up' ? amount : -amount);
+  }
+  return "ok";
+});
 
 ipcMain.on('resize-window', (event, expand) => {
   if (mainWindow) {
     const [width] = mainWindow.getSize();
-    if (expand) {
-      mainWindow.setSize(width, 100, true);
-    } else {
-      mainWindow.setSize(width, 80, true);
-    }
+    mainWindow.setSize(width, expand ? 100 : 80, true);
   }
 });
 
 ipcMain.on('open-video-window', () => {
-  createVideoWindow();
+  if (!videoWindow) {
+    videoWindow = new BrowserWindow({
+      width: 640, height: 480,
+      autoHideMenuBar: true,
+      backgroundColor: '#000000',
+      webPreferences: { nodeIntegration: true, contextIsolation: false }
+    });
+    const baseAppUrl = process.env.ELECTRON_START_URL || VERCEL_URL;
+    videoWindow.loadURL(`${baseAppUrl}?view=camera`);
+    videoWindow.on('closed', () => { videoWindow = null; });
+  }
 });
 
 app.whenReady().then(() => {
   createMainWindow();
   createTray();
-  setupAutostart();
-
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
-    else mainWindow.show();
-  });
-});
-
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    // ऐप ट्रे में चलता रहेगा
-  }
-});
-
-app.on('before-quit', () => {
-  isQuiting = true;
 });

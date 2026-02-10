@@ -11,18 +11,12 @@ export enum SessionStatus {
   ERROR = 'ERROR',
 }
 
-export interface MouseCommand {
-  action: 'move' | 'left_click' | 'right_click' | 'double_click' | 'scroll' | 'open' | 'none';
-  direction: 'up' | 'down' | 'left' | 'right' | '';
-  value: number;
-  application: string;
-}
-
 export interface LiveConfig {
   model: string;
   systemInstruction?: string;
   voiceName: 'Puck' | 'Charon' | 'Kore' | 'Fenrir' | 'Zephyr';
   isCameraEnabled: boolean;
+  isScreenEnabled: boolean;
   isMuted: boolean;
   isMouseMode: boolean;
 }
