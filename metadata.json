@@ -1,6 +1,6 @@
 {
   "name": "Gemini Live Vision",
-  "description": "A high-performance real-time conversational agent using Gemini 2.5 Live API with voice and vision capabilities.",
+  "description": "A high-performance real-time conversational agent using Gemini 2.5 Live API with voice and vision capabilities, acting as a Digital Mouse Agent.",
   "requestFramePermissions": [
     "camera",
     "microphone"
