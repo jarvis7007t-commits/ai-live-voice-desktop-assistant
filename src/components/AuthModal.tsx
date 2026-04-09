@@ -95,7 +95,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
                 <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-purple-600 transition-colors" size={18} />
                 <input 
                   type="email"
-                  placeholder="agent@nexus.ai"
+                  placeholder="agent@wardenix.ai"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-100 rounded-2xl pl-12 pr-4 py-4 text-slate-900 placeholder:text-slate-300 focus:outline-none focus:border-purple-500/40 transition-all"
@@ -160,7 +160,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
 
         <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-center gap-2">
           <ShieldCheck size={14} className="text-slate-400" />
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Secure Authentication Protocol v4.2</span>
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Wardenix Secure Protocol v5.0</span>
         </div>
       </motion.div>
     </motion.div>

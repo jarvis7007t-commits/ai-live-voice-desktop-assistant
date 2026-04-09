@@ -32,14 +32,14 @@
     "vite": "^6.2.0"
   },
   "build": {
-    "appId": "com.gemini.livevision",
-    "productName": "My Floating App",
+    "appId": "com.wardenix.ai",
+    "productName": "Wardenix",
     "directories": {
       "output": "dist-electron"
     },
     "win": {
-      "target": "portable",
-      "icon": "icon.ico",
+      "target": "nsis",
+      "icon": "icon.png",
       "requestedExecutionLevel": "asInvoker"
     },
     "nsis": {
@@ -47,13 +47,13 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "My Floating App"
+      "shortcutName": "Wardenix"
     },
     "files": [
       "dist/**/*",
       "electron.js",
       "package.json",
-      "icon.ico"
+      "icon.png"
     ],
     "asar": true
   }

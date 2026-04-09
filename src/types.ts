@@ -48,6 +48,7 @@ export interface LiveConfig {
   showWebcamOverlay: boolean;
   language: string;
   isDeveloperMode: boolean;
+  customApiKey?: string;
 }
 
 export interface UserProfile {

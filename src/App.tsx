@@ -85,6 +85,30 @@ const automationTools: FunctionDeclaration[] = [
       },
       required: ['action'],
     },
+  },
+  {
+    name: 'open_app',
+    parameters: {
+      type: Type.OBJECT,
+      description: 'Opens a specific application on the PC (e.g., VS Code, WhatsApp, Chrome).',
+      properties: {
+        name: { type: Type.STRING, description: 'The name or path of the application to open.' },
+      },
+      required: ['name'],
+    },
+  },
+  {
+    name: 'manage_file',
+    parameters: {
+      type: Type.OBJECT,
+      description: 'Creates, writes to, or deletes files on the PC. Use this for coding and project management.',
+      properties: {
+        action: { type: Type.STRING, enum: ['create', 'write', 'delete'], description: 'The file action to perform.' },
+        filePath: { type: Type.STRING, description: 'The full path to the file.' },
+        content: { type: Type.STRING, description: 'The content to write (for create/write actions).' },
+      },
+      required: ['action', 'filePath'],
+    },
   }
 ];
 
@@ -103,56 +127,23 @@ const App: React.FC = () => {
   const initialAISettings: AISetting[] = [
     { 
       id: 'gemini', 
-      name: 'Gemini AI', 
-      description: 'Google\'s most capable models for voice and vision.', 
+      name: 'Gemini AI (Free Tier)', 
+      description: 'Google\'s high-speed models from AI Studio Free Tier.', 
       enabled: true, 
       icon: 'sparkles',
       versions: [
-        { id: MODEL_NAME, name: 'Gemini 2.5 Flash' },
-        { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro' }
+        { id: MODEL_NAME, name: 'Gemini 3.1 Flash Live' },
+        { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash' }
       ],
       selectedVersion: MODEL_NAME
     },
-    { 
-      id: 'chatgpt', 
-      name: 'ChatGPT', 
-      description: 'OpenAI\'s conversational models.', 
-      enabled: false, 
-      icon: 'message',
-      versions: [
-        { id: 'gpt-4o', name: 'GPT-4o' },
-        { id: 'gpt-4-turbo', name: 'GPT-4 Turbo' }
-      ],
-      selectedVersion: 'gpt-4o'
-    },
-    { 
-      id: 'claude', 
-      name: 'Claude AI', 
-      description: 'Anthropic\'s intelligent and safe models.', 
-      enabled: false, 
-      icon: 'cloud',
-      versions: [
-        { id: 'claude-3-5-sonnet', name: 'Claude 3.5 Sonnet' },
-        { id: 'claude-3-opus', name: 'Claude 3 Opus' }
-      ],
-      selectedVersion: 'claude-3-5-sonnet'
-    },
-    { 
-      id: 'deepseek', 
-      name: 'DeepSeek', 
-      description: 'High-performance reasoning and coding models.', 
-      enabled: false, 
-      icon: 'zap',
-      versions: [
-        { id: 'deepseek-v3', name: 'DeepSeek V3' },
-        { id: 'deepseek-r1', name: 'DeepSeek R1' }
-      ],
-      selectedVersion: 'deepseek-v3'
-    },
-    { id: 'thinking', name: 'Thinking System', description: 'Chain-of-thought processing for deeper analysis.', enabled: true, icon: 'brain' },
-    { id: 'ui-design', name: 'UI Design Assistant', description: 'Expert in Tailwind CSS and React component design.', enabled: true, icon: 'palette' },
-    { id: 'code-assist', name: 'Code Assistant', description: 'Full-stack development and debugging expert.', enabled: true, icon: 'code' },
-    { id: 'imagen', name: 'Image Generation', description: 'High-quality image generation via Imagen 4.0.', enabled: false, icon: 'image' },
+    { id: 'coding', name: 'Coding Module', description: 'Advanced full-stack development, debugging, and architecture.', enabled: true, icon: 'code' },
+    { id: 'education', name: 'Education Module', description: 'Personalized learning, tutoring, and academic research.', enabled: true, icon: 'brain' },
+    { id: 'health', name: 'Health Module', description: 'Wellness tracking, medical information, and fitness guidance.', enabled: false, icon: 'zap' },
+    { id: 'business', name: 'Business Module', description: 'Market analysis, financial planning, and strategy.', enabled: false, icon: 'message' },
+    { id: 'content', name: 'Content Module', description: 'Creative writing, SEO, and social media management.', enabled: false, icon: 'palette' },
+    { id: 'automation', name: 'Automation Module', description: 'System-wide task automation and browser testing.', enabled: true, icon: 'mouse' },
+    { id: 'security', name: 'Security System', description: 'System monitoring, vulnerability assessment, and protection.', enabled: true, icon: 'cloud' },
   ];
 
   const [config, setConfig] = useState<LiveConfig>({
@@ -190,15 +181,41 @@ const App: React.FC = () => {
       setConfig(p => ({...p, isCameraEnabled: false}));
     } else {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        // Proactive check for camera devices
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const hasCamera = devices.some(device => device.kind === 'videoinput');
+        
+        if (!hasCamera) {
+          setIsCameraHardwareMissing(true);
+          setStatusMessage("No camera hardware found on this PC");
+          setTimeout(() => setStatusMessage(null), 3000);
+          return;
+        }
+
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: {
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+            facingMode: "user"
+          } 
+        });
         if (cameraVideoRef.current) {
           cameraVideoRef.current.srcObject = stream;
         }
         setIsCameraPreviewOpen(true);
+        setIsCameraHardwareMissing(false);
         setConfig(p => ({...p, isCameraEnabled: true}));
-      } catch (err) {
+      } catch (err: any) {
         console.error("Camera access error:", err);
         setIsCameraHardwareMissing(true);
+        if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+          setStatusMessage("No camera hardware detected");
+        } else if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          setStatusMessage("Camera permission denied");
+        } else {
+          setStatusMessage("Camera access failed");
+        }
+        setTimeout(() => setStatusMessage(null), 3000);
       }
     }
   };
@@ -230,6 +247,12 @@ const App: React.FC = () => {
   const audioNodesRef = useRef<{ source?: MediaStreamAudioSourceNode; processor?: ScriptProcessorNode } | null>(null);
   const audioSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const nextStartTimeRef = useRef(0);
+
+  useEffect(() => {
+    if (ipcRenderer) {
+      ipcRenderer.send('resize-window', isSettingsOpen || isAuthOpen);
+    }
+  }, [isSettingsOpen, isAuthOpen, ipcRenderer]);
 
   const stopSession = useCallback(() => {
     isStoppingRef.current = true;
@@ -281,7 +304,7 @@ const App: React.FC = () => {
       if (ipcRenderer) ipcRenderer.send('resize-window', true);
       setStatus(SessionStatus.CONNECTING);
       
-      const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+      const apiKey = config.customApiKey || process.env.GEMINI_API_KEY || process.env.API_KEY;
       if (!apiKey) {
         setStatusMessage("API Key missing");
         setStatus(SessionStatus.IDLE);
@@ -299,18 +322,54 @@ const App: React.FC = () => {
       await inputCtx.resume(); await outputCtx.resume();
 
       let screenStream: MediaStream | null = null;
-      try {
-        if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
-          screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: "always" } as any, audio: false });
-          if (screenVideoRef.current) {
+      if (config.isScreenEnabled) {
+        try {
+          if (ipcRenderer) {
+            // Automatic screen selection in Electron
+            const sourceId = await ipcRenderer.invoke('automation:get_screen_source');
+            if (sourceId) {
+              screenStream = await navigator.mediaDevices.getUserMedia({
+                audio: false,
+                video: {
+                  mandatory: {
+                    chromeMediaSource: 'desktop',
+                    chromeMediaSourceId: sourceId,
+                    minWidth: 1280,
+                    maxWidth: 1920,
+                    minHeight: 720,
+                    maxHeight: 1080
+                  }
+                }
+              } as any);
+            }
+          } else if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
+            // Browser fallback with picker
+            screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: "always" } as any, audio: false });
+          }
+
+          if (screenStream && screenVideoRef.current) {
             screenVideoRef.current.srcObject = screenStream;
             screenVideoRef.current.onloadedmetadata = () => screenVideoRef.current.play();
+            screenStream.getTracks()[0].onended = () => setConfig(p => ({...p, isScreenEnabled: false}));
+            setConfig(p => ({...p, isScreenEnabled: true}));
           }
-          screenStream.getTracks()[0].onended = () => setConfig(p => ({...p, isScreenEnabled: false}));
-          setConfig(p => ({...p, isScreenEnabled: true}));
+        } catch (e) {
+          console.warn("Screen share denied or unavailable", e);
+          setConfig(p => ({...p, isScreenEnabled: false}));
+          setStatusMessage("Voice-only mode (Screen denied)");
+          setTimeout(() => setStatusMessage(null), 3000);
         }
-      } catch (e) {
-        console.warn("Screen share denied or unavailable", e);
+      }
+
+      // Proactive check for microphone
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const hasMic = devices.some(device => device.kind === 'audioinput');
+      
+      if (!hasMic) {
+        setStatusMessage("No microphone detected");
+        setStatus(SessionStatus.IDLE);
+        setTimeout(() => setStatusMessage(null), 3000);
+        return;
       }
 
       const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -334,7 +393,7 @@ const App: React.FC = () => {
           responseModalities: [Modality.AUDIO],
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: config.voiceName } } },
           tools: [{ functionDeclarations: automationTools }],
-          systemInstruction: "You are a Digital Mouse Agent on a Dell PC. You can see the screen and control the mouse/keyboard. You can open websites, type messages (e.g., on WhatsApp), and perform system actions like shutdown or restart. Be helpful, efficient, and always confirm high-stakes actions like system power changes.",
+          systemInstruction: "You are Wardenix, a powerful AI Assistant on a Dell PC with FULL SYSTEM ACCESS. You have specialized modules for Coding, Education, Health, Business, Content, Automation, and Security. You can see the entire screen and control everything. You can open any app, manage files, and build entire systems. When asked to code, use your Coding Module to create files and write efficient code. Use your Education Module for tutoring, Health for wellness, Business for strategy, Content for creativity, Automation for tasks, and Security for system protection. You are extremely fast and efficient.",
           inputAudioTranscription: {},
           outputAudioTranscription: {},
         },
@@ -383,6 +442,8 @@ const App: React.FC = () => {
                    if (fc.name === 'scroll_screen') await ipcRenderer.invoke('automation:scroll', fc.args);
                    if (fc.name === 'open_url') await ipcRenderer.invoke('automation:open_url', fc.args);
                    if (fc.name === 'system_power') await ipcRenderer.invoke('automation:system_power', fc.args);
+                   if (fc.name === 'open_app') await ipcRenderer.invoke('automation:open_app', fc.args);
+                   if (fc.name === 'manage_file') await ipcRenderer.invoke('automation:manage_file', fc.args);
                    setStatusMessage(`AI Action: ${fc.name.replace('_', ' ')}`);
                    setTimeout(() => setStatusMessage(null), 2000);
                 } else {
@@ -526,19 +587,27 @@ const App: React.FC = () => {
         </button>
         
         <button 
-          className={`control-icon ${isCameraHardwareMissing ? 'text-amber-500' : config.isCameraEnabled ? 'icon-active-cyan' : 'icon-inactive'}`} 
+          className={`control-icon ${isCameraHardwareMissing ? 'text-amber-500' : isCameraPreviewOpen ? 'icon-active-cyan' : 'icon-inactive'}`} 
           onClick={toggleCameraPreview}
-          title={config.isCameraEnabled ? "Close Camera" : "Open Camera"}
+          title={isCameraPreviewOpen ? "Close Camera" : "Open Camera"}
         >
-          {config.isCameraEnabled ? <Video size={16} /> : <VideoOff size={16} />}
+          {isCameraPreviewOpen ? <Video size={16} /> : <VideoOff size={16} />}
         </button>
         
         <button 
-          className={`control-icon ${isSettingsOpen ? 'icon-active-cyan' : 'icon-inactive'}`} 
+          className={`control-icon ${config.isScreenEnabled ? 'icon-active-cyan' : 'icon-inactive'}`} 
+          onClick={() => setConfig(p => ({...p, isScreenEnabled: !p.isScreenEnabled}))}
+          title={config.isScreenEnabled ? "Disable Screen Share" : "Enable Screen Share"}
+        >
+          <MousePointer2 size={16} />
+        </button>
+        
+        <button 
+          className={`control-icon group ${isSettingsOpen ? 'icon-active-cyan' : 'icon-inactive'}`} 
           onClick={() => setIsSettingsOpen(true)}
           title="Settings"
         >
-          <Settings size={16} />
+          <Settings size={16} className="transition-transform duration-500 group-hover:rotate-90" />
         </button>
       </div>
 
@@ -562,10 +631,13 @@ const App: React.FC = () => {
       <AnimatePresence>
         {isCameraPreviewOpen && (
           <motion.div
+            drag
+            dragMomentum={false}
             initial={{ opacity: 0, scale: 0.5, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.5, y: 20 }}
             className="circular-video-container"
+            style={{ WebkitAppRegion: 'no-drag' } as any}
           >
             <video 
               ref={cameraVideoRef} 

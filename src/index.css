@@ -132,18 +132,20 @@
   /* Circular Video Preview */
   .circular-video-container {
     position: fixed;
-    top: 20px;
-    right: 20px;
-    width: 200px;
-    height: 200px;
+    top: 40px;
+    right: 40px;
+    width: 180px;
+    height: 180px;
     border-radius: 50%;
     overflow: hidden;
-    border: 10px solid #000; /* Black border from image */
+    border: 3px solid #22d3ee; /* Cyan border from image */
     z-index: 1000;
-    background: #ff8c00; /* Orange background from image */
+    background: #000; /* Black background from image */
     display: flex;
     align-items: center;
     justify-content: center;
+    box-shadow: 0 0 20px rgba(34, 211, 238, 0.3);
+    cursor: move;
   }
 
   .circular-video {

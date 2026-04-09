@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Sparkles, Brain, Palette, Code, Image as ImageIcon, MessageSquare, Zap, ChevronRight, ChevronDown, Settings, Cloud, Check } from 'lucide-react';
+import { X, Sparkles, Brain, Palette, Code, Image as ImageIcon, MessageSquare, Zap, ChevronRight, ChevronDown, Settings, Cloud, Check, Key, Mic, Send, Eye, EyeOff, Edit2 } from 'lucide-react';
 import { LiveConfig, AISetting } from '../types';
 
 interface SettingsModalProps {
@@ -20,8 +20,24 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 }) => {
   const [showAIList, setShowAIList] = useState(false);
   const [openVersionListId, setOpenVersionListId] = useState<string | null>(null);
+  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [isKeyVisible, setIsKeyVisible] = useState(false);
+  const [isKeySaved, setIsKeySaved] = useState(!!config.customApiKey);
 
   if (!isOpen) return null;
+
+  const handleSendKey = () => {
+    if (apiKeyInput.trim()) {
+      setConfig(prev => ({ ...prev, customApiKey: apiKeyInput.trim() }));
+      setApiKeyInput('');
+      setIsKeySaved(true);
+    }
+  };
+
+  const handleEditKey = () => {
+    setApiKeyInput(config.customApiKey || '');
+    setIsKeySaved(false);
+  };
 
   const selectVersion = (aiId: string, versionId: string) => {
     setConfig(prev => ({
@@ -86,36 +102,129 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         onClick={e => e.stopPropagation()}
       >
         {/* Top Header with Auth Buttons */}
-        <div className="flex justify-end gap-3 mb-8">
-          <button 
-            onClick={onLoginClick}
-            className="bg-[#6b21a8] text-white px-5 py-2 rounded-lg font-bold text-sm hover:bg-[#581c87] transition-all active:scale-95"
-          >
-            Register
-          </button>
-          <button 
-            onClick={onLoginClick}
-            className="bg-slate-50 text-slate-700 px-5 py-2 rounded-lg font-bold text-sm hover:bg-slate-100 transition-all border border-slate-200 active:scale-95"
-          >
-            Sign In
-          </button>
+        <div className="flex justify-between items-center mb-8">
+          <h1 className="text-xl font-bold text-slate-900">Settings</h1>
+          <div className="flex gap-3">
+            <button 
+              onClick={onLoginClick}
+              className="bg-[#6b21a8] text-white px-5 py-2 rounded-lg font-bold text-sm hover:bg-[#581c87] transition-all active:scale-95"
+            >
+              Register
+            </button>
+            <button 
+              onClick={onLoginClick}
+              className="bg-slate-50 text-slate-700 px-5 py-2 rounded-lg font-bold text-sm hover:bg-slate-100 transition-all border border-slate-200 active:scale-95"
+            >
+              Sign In
+            </button>
+          </div>
         </div>
 
         {/* Close Button */}
         <button 
           onClick={onClose}
-          className="absolute top-4 left-6 text-slate-400 hover:text-slate-600 transition-colors"
+          className="absolute top-6 right-6 text-slate-400 hover:text-slate-600 transition-colors z-10"
         >
           <X size={20} />
         </button>
 
         {/* Main Content Area */}
         <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
-          {/* Developer Ai Toggle Button */}
+          {/* API Configuration Section */}
+          <div className="mb-6 p-4 rounded-xl border border-slate-200 bg-slate-50/30">
+            <div className="flex items-center gap-3 mb-3">
+              <Key size={18} className="text-amber-500" />
+              <span className="font-bold text-slate-700">API Configuration</span>
+            </div>
+            <div className="space-y-2">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Gemini API Key</p>
+              
+              {!isKeySaved ? (
+                <div className="relative flex gap-2">
+                  <input 
+                    type={isKeyVisible ? "text" : "password"}
+                    placeholder="Paste your API key here..."
+                    value={apiKeyInput}
+                    onChange={e => setApiKeyInput(e.target.value)}
+                    className="flex-1 bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 placeholder:text-slate-300 focus:outline-none focus:border-amber-500/40 transition-all"
+                  />
+                  <button 
+                    onClick={handleSendKey}
+                    disabled={!apiKeyInput.trim()}
+                    className="bg-amber-500 text-white p-3 rounded-xl hover:bg-amber-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
+                  >
+                    <Send size={18} />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between bg-white border border-slate-200 rounded-xl px-4 py-3">
+                  <div className="flex items-center gap-2 overflow-hidden">
+                    <div className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
+                    <span className="text-sm text-slate-600 font-mono truncate">
+                      {isKeyVisible ? config.customApiKey : '••••••••••••••••'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0 ml-2">
+                    <button 
+                      onClick={() => setIsKeyVisible(!isKeyVisible)}
+                      className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-all"
+                      title={isKeyVisible ? "Hide Key" : "View Key"}
+                    >
+                      {isKeyVisible ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                    <button 
+                      onClick={handleEditKey}
+                      className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-all"
+                      title="Edit Key"
+                    >
+                      <Edit2 size={16} />
+                    </button>
+                  </div>
+                </div>
+              )}
+              
+              <p className="text-[9px] text-slate-400 leading-tight px-1">
+                Your key is stored locally for this session. It enables Live Vision and Voice features.
+                <a 
+                  href="https://aistudio.google.com/app/apikey" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-amber-600 hover:underline ml-1 font-bold"
+                >
+                  Get a free Gemini API key here.
+                </a>
+              </p>
+            </div>
+          </div>
+
+          {/* Voice Selection Section */}
+          <div className="mb-6 p-4 rounded-xl border border-slate-200 bg-slate-50/30">
+            <div className="flex items-center gap-3 mb-3">
+              <Mic size={18} className="text-purple-500" />
+              <span className="font-bold text-slate-700">Voice Model</span>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {['Puck', 'Charon', 'Kore', 'Fenrir', 'Aoede'].map(voice => (
+                <button
+                  key={voice}
+                  onClick={() => setConfig(prev => ({ ...prev, voiceName: voice }))}
+                  className={`px-3 py-2 rounded-lg text-xs font-bold transition-all ${
+                    config.voiceName === voice 
+                      ? 'bg-purple-600 text-white shadow-md' 
+                      : 'bg-white text-slate-600 border border-slate-200 hover:border-purple-300'
+                  }`}
+                >
+                  {voice}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Wardenix Core Toggle Button */}
           <div className="flex items-center justify-between p-4 rounded-xl border border-slate-200 bg-white text-slate-700 mb-4 hover:border-blue-400 transition-all">
             <div className="flex items-center gap-3">
               <Code size={20} className="text-blue-600" />
-              <span className="font-bold text-lg">Developer Ai</span>
+              <span className="font-bold text-lg">Wardenix Core</span>
             </div>
             <button 
               onClick={() => setConfig(prev => ({ ...prev, isDeveloperMode: !prev.isDeveloperMode }))}
@@ -157,7 +266,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                 className="overflow-hidden"
               >
                 <div className="space-y-4 mb-8">
-                  <p className="text-sm text-slate-500 px-1">Enable AI systems for effective website development.</p>
+                  <p className="text-sm text-slate-500 px-1">Enable specialized modules for Coding, Education, Health, and more.</p>
                   {config.aiSettings.map((setting: AISetting) => {
                     const hasVersions = setting.versions && setting.versions.length > 0;
                     const isVersionListOpen = openVersionListId === setting.id;
@@ -183,6 +292,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                                 {setting.enabled && setting.selectedVersion && (
                                   <span className="text-[8px] bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded-full font-bold uppercase tracking-tighter">
                                     {setting.versions?.find(v => v.id === setting.selectedVersion)?.name}
+                                  </span>
+                                )}
+                                {setting.enabled && setting.selectedVersion?.includes('flash') && (
+                                  <span className="text-[8px] bg-green-100 text-green-600 px-1.5 py-0.5 rounded-full font-bold uppercase tracking-tighter ml-1">
+                                    Free Tier
                                   </span>
                                 )}
                               </div>
@@ -212,6 +326,33 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                             </div>
                           </div>
                         </div>
+
+                        {/* Module API Key Input */}
+                        <AnimatePresence>
+                          {setting.enabled && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: 'auto', opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              className="ml-14 overflow-hidden"
+                            >
+                              <div className="pb-2">
+                                <input 
+                                  type="password"
+                                  placeholder={`${setting.name} API Key...`}
+                                  value={setting.apiKey || ''}
+                                  onChange={e => setConfig(prev => ({
+                                    ...prev,
+                                    aiSettings: prev.aiSettings.map(s => 
+                                      s.id === setting.id ? { ...s, apiKey: e.target.value } : s
+                                    )
+                                  }))}
+                                  className="w-full bg-slate-50 border border-slate-100 rounded-lg px-3 py-2 text-[10px] text-slate-600 placeholder:text-slate-300 focus:outline-none focus:border-purple-300 transition-all"
+                                />
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
 
                         {/* Version List Dropdown */}
                         <AnimatePresence>
@@ -247,17 +388,17 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
             )}
           </AnimatePresence>
 
-          {/* Website Development Specific Section */}
+          {/* Wardenix Specialized Tools Section */}
           <div className="mt-4 pt-8 border-t border-slate-100">
-            <h2 className="text-lg font-bold text-slate-900 mb-4">Development Tools</h2>
+            <h2 className="text-lg font-bold text-slate-900 mb-4">System Capabilities</h2>
             <div className="grid grid-cols-2 gap-3">
               <div className="p-3 rounded-lg border border-slate-100 bg-slate-50/50">
                 <p className="text-[10px] uppercase tracking-wider font-bold text-slate-400 mb-1">Vision Mode</p>
-                <p className="text-xs font-medium text-slate-700">UI/UX Analysis</p>
+                <p className="text-xs font-medium text-slate-700">Real-time Analysis</p>
               </div>
               <div className="p-3 rounded-lg border border-slate-100 bg-slate-50/50">
                 <p className="text-[10px] uppercase tracking-wider font-bold text-slate-400 mb-1">Automation</p>
-                <p className="text-xs font-medium text-slate-700">Browser Testing</p>
+                <p className="text-xs font-medium text-slate-700">A to Z PC Control</p>
               </div>
             </div>
           </div>

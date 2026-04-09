@@ -1,7 +1,8 @@
 
-const { app, BrowserWindow, ipcMain, screen, Tray, Menu, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, Tray, Menu, shell, desktopCapturer } = require('electron');
 const path = require('path');
 const { exec } = require('child_process');
+const fs = require('fs');
 
 // NOTE: In a real production environment, you would: npm install robotjs
 // For this implementation, we use a try-catch to handle environments where native modules might be restricted.
@@ -35,9 +36,9 @@ function createTray() {
 
 function createMainWindow() {
   const { width: screenWidth, height: screenHeight } = screen.getPrimaryDisplay().workAreaSize;
-  const winWidth = 360;
-  const winHeight = 100;
-  const margin = 20;
+  const winWidth = 400;
+  const winHeight = 120;
+  const margin = 30;
 
   mainWindow = new BrowserWindow({
     width: winWidth,
@@ -56,11 +57,21 @@ function createMainWindow() {
       backgroundThrottling: false,
       webSecurity: false
     },
+    icon: path.join(__dirname, 'icon.png')
   });
 
   mainWindow.setAlwaysOnTop(true, 'screen-saver');
   const startUrl = process.env.ELECTRON_START_URL || VERCEL_URL;
   mainWindow.loadURL(startUrl);
+  
+  mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
+    const allowedPermissions = ['media', 'display-capture', 'mediaKeySystem'];
+    if (allowedPermissions.includes(permission)) {
+      callback(true);
+    } else {
+      callback(false);
+    }
+  });
 
   mainWindow.on('close', (event) => {
     if (!isQuiting) {
@@ -124,10 +135,54 @@ ipcMain.handle('automation:system_power', (event, { action }) => {
   return "ok";
 });
 
+ipcMain.handle('automation:get_screen_source', async () => {
+  const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } });
+  // Return the ID of the primary screen
+  return sources[0]?.id;
+});
+
+ipcMain.handle('automation:open_app', (event, { name }) => {
+  console.log(`Automation: Opening app ${name}`);
+  // Try to open via start command (Windows)
+  exec(`start "" "${name}"`, (err) => {
+    if (err) {
+      // Fallback for common apps if simple start fails
+      if (name.toLowerCase().includes('code') || name.toLowerCase().includes('vs code')) {
+        exec('code .');
+      } else if (name.toLowerCase().includes('whatsapp')) {
+        exec('start whatsapp:');
+      }
+    }
+  });
+  return "ok";
+});
+
+ipcMain.handle('automation:manage_file', (event, { action, filePath, content }) => {
+  console.log(`Automation: File ${action} on ${filePath}`);
+  try {
+    if (action === 'create' || action === 'write') {
+      const dir = path.dirname(filePath);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(filePath, content || '');
+    } else if (action === 'delete') {
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    }
+    return "ok";
+  } catch (e) {
+    return `error: ${e.message}`;
+  }
+});
+
 ipcMain.on('resize-window', (event, expand) => {
   if (mainWindow) {
-    const [width] = mainWindow.getSize();
-    mainWindow.setSize(width, expand ? 100 : 80, true);
+    if (expand) {
+      mainWindow.setSize(450, 650);
+      mainWindow.setResizable(true);
+    } else {
+      mainWindow.setSize(400, 120);
+      mainWindow.setResizable(false);
+    }
+    mainWindow.center();
   }
 });
 

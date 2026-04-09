@@ -1,6 +1,6 @@
 {
-  "name": "Gemini Live Vision",
-  "description": "A high-performance real-time conversational agent using Gemini 2.5 Live API with voice and vision capabilities, acting as a Digital Mouse Agent.",
+  "name": "Wardenix",
+  "description": "Wardenix is a powerful AI Assistant with specialized modules for Coding, Education, Health, Business, Content, Automation, and Security, featuring real-time voice and vision capabilities.",
   "requestFramePermissions": [
     "camera",
     "microphone"
