@@ -4,14 +4,20 @@ const path = require('path');
 const { exec } = require('child_process');
 const fs = require('fs');
 
-// NOTE: In a real production environment, you would: npm install robotjs
-// For this implementation, we use a try-catch to handle environments where native modules might be restricted.
-let robot;
-try {
-  robot = require('robotjs');
-} catch (e) {
-  console.warn("RobotJS not found. Automation will be logged but not executed.");
-}
+// --- Native PowerShell Automation Bridge ---
+const runPowerShell = (script) => {
+  return new Promise((resolve, reject) => {
+    const command = `powershell -Command "Add-Type -AssemblyName System.Windows.Forms; Add-Type -AssemblyName System.Drawing; ${script}"`;
+    exec(command, (error, stdout, stderr) => {
+      if (error) {
+        console.error(`PowerShell Error: ${error.message}`);
+        reject(error);
+        return;
+      }
+      resolve(stdout.trim());
+    });
+  });
+};
 
 let mainWindow;
 let videoWindow;
@@ -82,39 +88,59 @@ function createMainWindow() {
 }
 
 // --- Automation IPC Handlers ---
-ipcMain.handle('automation:move', (event, { x, y }) => {
+ipcMain.handle('automation:move', async (event, { x, y }) => {
   console.log(`Automation: Moving mouse to ${x}, ${y}`);
-  if (robot) {
-    const { width, height } = screen.getPrimaryDisplay().size;
-    // Map normalized 0-1000 coordinates if Gemini uses them, or use absolute
-    robot.moveMouse(x, y);
+  try {
+    await runPowerShell(`[System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(${Math.round(x)}, ${Math.round(y)})`);
+    return "ok";
+  } catch (e) {
+    return `error: ${e.message}`;
   }
-  return "ok";
 });
 
-ipcMain.handle('automation:click', (event, { button, double }) => {
+ipcMain.handle('automation:click', async (event, { button, double }) => {
   console.log(`Automation: Clicking ${button}`);
-  if (robot) {
-    robot.mouseClick(button || 'left', double || false);
+  try {
+    const clickCode = button === 'right' ? '0x0008 | 0x0010' : '0x0002 | 0x0004';
+    const script = `
+      $signature = '[DllImport(\"user32.dll\")] public static extern void mouse_event(int dwFlags, int dx, int dy, int cButtons, int dwExtraInfo);';
+      $type = Add-Type -MemberDefinition $signature -Name \"Win32MouseEvent\" -Namespace \"Win32Functions\" -PassThru;
+      $type::mouse_event(${clickCode}, 0, 0, 0, 0);
+      ${double ? `Start-Sleep -Milliseconds 100; $type::mouse_event(${clickCode}, 0, 0, 0, 0);` : ''}
+    `;
+    await runPowerShell(script);
+    return "ok";
+  } catch (e) {
+    return `error: ${e.message}`;
   }
-  return "ok";
 });
 
-ipcMain.handle('automation:type', (event, { text }) => {
+ipcMain.handle('automation:type', async (event, { text }) => {
   console.log(`Automation: Typing "${text}"`);
-  if (robot) {
-    robot.typeString(text);
+  try {
+    // Escape special characters for SendKeys
+    const escapedText = text.replace(/([+^%~{}()\[\]])/g, '{$1}');
+    await runPowerShell(`[System.Windows.Forms.SendKeys]::SendWait('${escapedText}')`);
+    return "ok";
+  } catch (e) {
+    return `error: ${e.message}`;
   }
-  return "ok";
 });
 
-ipcMain.handle('automation:scroll', (event, { direction, amount }) => {
+ipcMain.handle('automation:scroll', async (event, { direction, amount }) => {
   console.log(`Automation: Scrolling ${direction}`);
-  if (robot) {
-    // robotjs scroll direction is y, x. y is up/down.
-    robot.scrollMouse(0, direction === 'up' ? amount : -amount);
+  try {
+    const scrollAmount = direction === 'up' ? amount : -amount;
+    const script = `
+      $signature = '[DllImport(\"user32.dll\")] public static extern void mouse_event(int dwFlags, int dx, int dy, int dwData, int dwExtraInfo);';
+      $type = Add-Type -MemberDefinition $signature -Name \"Win32ScrollEvent\" -Namespace \"Win32Functions\" -PassThru;
+      $type::mouse_event(0x0800, 0, 0, ${scrollAmount}, 0);
+    `;
+    await runPowerShell(script);
+    return "ok";
+  } catch (e) {
+    return `error: ${e.message}`;
   }
-  return "ok";
 });
 
 ipcMain.handle('automation:open_url', (event, { url }) => {
@@ -155,6 +181,29 @@ ipcMain.handle('automation:open_app', (event, { name }) => {
     }
   });
   return "ok";
+});
+
+ipcMain.handle('automation:press_key', async (event, { key }) => {
+  console.log(`Automation: Pressing key ${key}`);
+  try {
+    const keyMap = {
+      'enter': '{ENTER}',
+      'tab': '{TAB}',
+      'escape': '{ESC}',
+      'esc': '{ESC}',
+      'backspace': '{BACKSPACE}',
+      'up': '{UP}',
+      'down': '{DOWN}',
+      'left': '{LEFT}',
+      'right': '{RIGHT}',
+      'space': ' '
+    };
+    const sendKey = keyMap[key.toLowerCase()] || key;
+    await runPowerShell(`[System.Windows.Forms.SendKeys]::SendWait('${sendKey}')`);
+    return "ok";
+  } catch (e) {
+    return `error: ${e.message}`;
+  }
 });
 
 ipcMain.handle('automation:manage_file', (event, { action, filePath, content }) => {

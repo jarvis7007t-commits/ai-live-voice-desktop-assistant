@@ -98,6 +98,17 @@ const automationTools: FunctionDeclaration[] = [
     },
   },
   {
+    name: 'press_key',
+    parameters: {
+      type: Type.OBJECT,
+      description: 'Presses a special key (e.g., enter, tab, esc, backspace).',
+      properties: {
+        key: { type: Type.STRING, description: 'The key to press (e.g., enter, tab, escape, backspace, up, down, left, right).' },
+      },
+      required: ['key'],
+    },
+  },
+  {
     name: 'manage_file',
     parameters: {
       type: Type.OBJECT,
@@ -393,7 +404,7 @@ const App: React.FC = () => {
           responseModalities: [Modality.AUDIO],
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: config.voiceName } } },
           tools: [{ functionDeclarations: automationTools }],
-          systemInstruction: "You are Wardenix, a powerful AI Assistant on a Dell PC with FULL SYSTEM ACCESS. You have specialized modules for Coding, Education, Health, Business, Content, Automation, and Security. You can see the entire screen and control everything. You can open any app, manage files, and build entire systems. When asked to code, use your Coding Module to create files and write efficient code. Use your Education Module for tutoring, Health for wellness, Business for strategy, Content for creativity, Automation for tasks, and Security for system protection. You are extremely fast and efficient.",
+          systemInstruction: "You are Wardenix, the ultimate AI OS Assistant with FULL NATIVE SYSTEM ACCESS. You operate on a high-performance PC and have specialized modules for Coding, Education, Health, Business, Content, Automation, and Security. You can see the entire screen in real-time and control the mouse and keyboard with pixel precision. You can open any application, create complex file structures, write production-ready code, and automate any task from A to Z. When a user asks to build something, you don't just explain it—you open VS Code, create the files, and write the code yourself. You are fast, efficient, and have a bold, helpful personality. You are the master of this PC.",
           inputAudioTranscription: {},
           outputAudioTranscription: {},
         },
@@ -443,6 +454,7 @@ const App: React.FC = () => {
                    if (fc.name === 'open_url') await ipcRenderer.invoke('automation:open_url', fc.args);
                    if (fc.name === 'system_power') await ipcRenderer.invoke('automation:system_power', fc.args);
                    if (fc.name === 'open_app') await ipcRenderer.invoke('automation:open_app', fc.args);
+                   if (fc.name === 'press_key') await ipcRenderer.invoke('automation:press_key', fc.args);
                    if (fc.name === 'manage_file') await ipcRenderer.invoke('automation:manage_file', fc.args);
                    setStatusMessage(`AI Action: ${fc.name.replace('_', ' ')}`);
                    setTimeout(() => setStatusMessage(null), 2000);
