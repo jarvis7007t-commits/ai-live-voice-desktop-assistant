@@ -48,12 +48,8 @@
     align-items: center;
     justify-content: space-between;
     padding: 0 16px;
-    background: linear-gradient(90deg, #10141d 0%, #05070a 100%);
-    border: 1px solid rgba(34, 211, 238, 0.25);
-    box-shadow: 
-      0 10px 25px rgba(0, 0, 0, 0.8), 
-      0 0 8px rgba(34, 211, 238, 0.1),
-      inset 0 0 6px rgba(255, 255, 255, 0.05);
+    background: #10141d;
+    border: 1px solid #22d3ee;
     z-index: 10;
     transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
     flex-shrink: 0;
@@ -66,27 +62,9 @@
 
   .vibrating {
     animation: vibrate 0.1s infinite linear;
-    border-color: rgba(34, 211, 238, 0.5);
-    box-shadow: 
-      0 10px 30px rgba(0, 0, 0, 0.9), 
-      0 0 20px rgba(34, 211, 238, 0.25);
+    border-color: #22d3ee;
   }
 
-  .lumina-capsule::after {
-    content: "";
-    position: absolute;
-    inset: -1.2px;
-    border-radius: 999px;
-    background: linear-gradient(90deg, #22d3ee, #0ea5e9);
-    filter: blur(8px);
-    z-index: -1;
-    opacity: 0;
-    transition: opacity 0.3s ease;
-  }
-
-  .lumina-capsule.connected::after {
-    opacity: 0.1;
-  }
 
   .section-vortex {
     position: relative;
@@ -103,15 +81,7 @@
   }
 
   .vortex-glow {
-    position: absolute;
-    width: 140%;
-    height: 140%;
-    background: radial-gradient(circle, rgba(34, 211, 238, 0.35) 0%, transparent 70%);
-    border-radius: 50%;
-    filter: blur(6px);
-    animation: pulse-glow 3s infinite ease-in-out;
-    opacity: 0;
-    transition: opacity 0.5s ease;
+    display: none;
   }
 
   .connected .vortex-glow {
@@ -127,7 +97,6 @@
 
   .connected .globe-overlay {
     color: #22d3ee;
-    filter: drop-shadow(0 0 6px rgba(34, 211, 238, 0.8));
   }
 
   .section-controls {
@@ -157,9 +126,63 @@
   }
   
   .icon-inactive { color: #64748b; }
-  .icon-active-cyan { color: #22d3ee; filter: drop-shadow(0 0 8px rgba(34, 211, 238, 0.6)); }
-  .icon-active-red { color: #ef4444; filter: drop-shadow(0 0 10px rgba(239, 68, 68, 0.6)); }
+  .icon-active-cyan { color: #22d3ee; }
+  .icon-active-red { color: #ef4444; }
   
+  /* Circular Video Preview */
+  .circular-video-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    width: 200px;
+    height: 200px;
+    border-radius: 50%;
+    overflow: hidden;
+    border: 10px solid #000; /* Black border from image */
+    z-index: 1000;
+    background: #ff8c00; /* Orange background from image */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .circular-video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transform: scaleX(-1);
+  }
+
+  .camera-overlay {
+    position: absolute;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    width: 100%;
+    pointer-events: none;
+  }
+
+  .camera-overlay > * {
+    pointer-events: auto;
+  }
+
+  .ai-status-indicator {
+    background: rgba(0, 0, 0, 0.6);
+    padding: 12px 24px;
+    border-radius: 999px;
+    border: 1px solid rgba(34, 211, 238, 0.3);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: #fff;
+    font-size: 14px;
+    font-weight: 500;
+  }
+
   .slashed::after {
     content: "";
     position: absolute;

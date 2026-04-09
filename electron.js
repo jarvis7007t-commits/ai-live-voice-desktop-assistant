@@ -1,6 +1,7 @@
 
-const { app, BrowserWindow, ipcMain, screen, Tray, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, Tray, Menu, shell } = require('electron');
 const path = require('path');
+const { exec } = require('child_process');
 
 // NOTE: In a real production environment, you would: npm install robotjs
 // For this implementation, we use a try-catch to handle environments where native modules might be restricted.
@@ -101,6 +102,24 @@ ipcMain.handle('automation:scroll', (event, { direction, amount }) => {
   if (robot) {
     // robotjs scroll direction is y, x. y is up/down.
     robot.scrollMouse(0, direction === 'up' ? amount : -amount);
+  }
+  return "ok";
+});
+
+ipcMain.handle('automation:open_url', (event, { url }) => {
+  console.log(`Automation: Opening URL ${url}`);
+  if (url) {
+    shell.openExternal(url);
+  }
+  return "ok";
+});
+
+ipcMain.handle('automation:system_power', (event, { action }) => {
+  console.log(`Automation: System Power Action ${action}`);
+  if (action === 'shutdown') {
+    exec('shutdown /s /t 0');
+  } else if (action === 'restart') {
+    exec('shutdown /r /t 0');
   }
   return "ok";
 });

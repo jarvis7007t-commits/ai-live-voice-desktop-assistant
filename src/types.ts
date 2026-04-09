@@ -9,6 +9,19 @@ export enum SessionStatus {
   CONNECTING = 'CONNECTING',
   CONNECTED = 'CONNECTED',
   ERROR = 'ERROR',
+  SETTINGS = 'SETTINGS',
+  AUTH = 'AUTH',
+}
+
+export interface AISetting {
+  id: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+  icon: string;
+  apiKey?: string;
+  versions?: { id: string; name: string }[];
+  selectedVersion?: string;
 }
 
 export interface LiveConfig {
@@ -19,4 +32,26 @@ export interface LiveConfig {
   isScreenEnabled: boolean;
   isMuted: boolean;
   isMouseMode: boolean;
+  aiSettings: AISetting[];
+  // New features based on image and request
+  recordingQuality: 'SD' | 'HD' | '4K';
+  instantShareLink: boolean;
+  highlightMouseCursor: boolean;
+  minimalDock: boolean;
+  useProxyServer: boolean;
+  autoStart: boolean;
+  hardwareAcceleration: boolean;
+  frameRate: 30 | 60 | 120;
+  audioBitrate: 128 | 256 | 320;
+  showWatermark: boolean;
+  countdownTimer: number;
+  showWebcamOverlay: boolean;
+  language: string;
+  isDeveloperMode: boolean;
+}
+
+export interface UserProfile {
+  email: string;
+  name: string;
+  isLoggedIn: boolean;
 }
