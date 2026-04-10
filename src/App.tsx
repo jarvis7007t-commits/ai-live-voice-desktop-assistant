@@ -550,7 +550,7 @@ const App: React.FC = () => {
                 }
                 
                 sessionPromise.then(s => s.sendToolResponse({
-                  functionResponses: { id: fc.id, name: fc.name, response: { result: result } }
+                  functionResponses: [{ id: fc.id, name: fc.name, response: { result: result } }]
                 })).catch(err => console.error("Tool response error:", err));
               }
             }
