@@ -1,0 +1,10 @@
+google-genai
+PyQt6
+pyautogui
+opencv-python
+pyaudio
+screen-brightness-control
+pycaw
+python-dotenv
+keyboard
+pyinstaller

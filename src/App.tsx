@@ -109,6 +109,72 @@ const automationTools: FunctionDeclaration[] = [
     },
   },
   {
+    name: 'set_volume',
+    parameters: {
+      type: Type.OBJECT,
+      description: 'Sets the system volume level.',
+      properties: {
+        level: { type: Type.NUMBER, description: 'Volume level from 0 to 100.' },
+      },
+      required: ['level'],
+    },
+  },
+  {
+    name: 'set_brightness',
+    parameters: {
+      type: Type.OBJECT,
+      description: 'Sets the screen brightness level.',
+      properties: {
+        level: { type: Type.NUMBER, description: 'Brightness level from 0 to 100.' },
+      },
+      required: ['level'],
+    },
+  },
+  {
+    name: 'toggle_wifi',
+    parameters: {
+      type: Type.OBJECT,
+      description: 'Enables or disables WiFi.',
+      properties: {
+        enabled: { type: Type.BOOLEAN, description: 'True to enable, False to disable.' },
+      },
+      required: ['enabled'],
+    },
+  },
+  {
+    name: 'toggle_bluetooth',
+    parameters: {
+      type: Type.OBJECT,
+      description: 'Enables or disables Bluetooth.',
+      properties: {
+        enabled: { type: Type.BOOLEAN, description: 'True to enable, False to disable.' },
+      },
+      required: ['enabled'],
+    },
+  },
+  {
+    name: 'toggle_camera',
+    parameters: {
+      type: Type.OBJECT,
+      description: 'Enables or disables the system camera.',
+      properties: {
+        enabled: { type: Type.BOOLEAN, description: 'True to enable, False to disable.' },
+      },
+      required: ['enabled'],
+    },
+  },
+  {
+    name: 'toggle_microphone',
+    parameters: {
+      type: Type.OBJECT,
+      description: 'Mutes or unmutes the system microphone.',
+      properties: {
+        enabled: { type: Type.BOOLEAN, description: 'True to unmute, False to mute.' },
+      },
+      required: ['enabled'],
+    },
+  },
+  {
     name: 'manage_file',
     parameters: {
       type: Type.OBJECT,
@@ -238,6 +304,7 @@ const App: React.FC = () => {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isCameraHardwareMissing, setIsCameraHardwareMissing] = useState(false);
   const [isAutomationAuthorized, setIsAutomationAuthorized] = useState(false);
+  const [pendingAction, setPendingAction] = useState<{name: string, args: any, id: string} | null>(null);
   const [transcriptions, setTranscriptions] = useState<TranscriptionEntry[]>([]);
   
   const isMutedRef = useRef(config.isMuted);
@@ -404,7 +471,7 @@ const App: React.FC = () => {
           responseModalities: [Modality.AUDIO],
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: config.voiceName } } },
           tools: [{ functionDeclarations: automationTools }],
-          systemInstruction: "You are Wardenix, the ultimate AI OS Assistant with FULL NATIVE SYSTEM ACCESS. You operate on a high-performance PC and have specialized modules for Coding, Education, Health, Business, Content, Automation, and Security. You can see the entire screen in real-time and control the mouse and keyboard with pixel precision. You can open any application, create complex file structures, write production-ready code, and automate any task from A to Z. When a user asks to build something, you don't just explain it—you open VS Code, create the files, and write the code yourself. You are fast, efficient, and have a bold, helpful personality. You are the master of this PC.",
+          systemInstruction: "You are Wardenix, the ultimate AI OS Assistant with FULL NATIVE SYSTEM ACCESS. You operate on a high-performance PC and have specialized modules for Coding, Education, Health, Business, Content, Automation, and Security. You can see the entire screen in real-time and control the mouse and keyboard with pixel precision. You can open any application, create complex file structures, write production-ready code, and automate any task from A to Z. You can also control system settings like volume, brightness, WiFi, and Bluetooth. When a user asks for a dangerous action (shutdown, restart, delete file), you MUST ask for confirmation first. You are fast, efficient, and have a bold, helpful personality. You are the master of this PC.",
           inputAudioTranscription: {},
           outputAudioTranscription: {},
         },
@@ -442,20 +509,38 @@ const App: React.FC = () => {
             // 2. Handle Tool Calls
             if (message.toolCall) {
               for (const fc of message.toolCall.functionCalls) {
-                // Automation Security Check - Auto-authorize for Dell PC control as requested
-                setIsAutomationAuthorized(true);
-                
-                let result = "ok";
+                let result: any = "ok";
                 if (ipcRenderer) {
-                   if (fc.name === 'move_mouse') await ipcRenderer.invoke('automation:move', fc.args);
-                   if (fc.name === 'click_mouse') await ipcRenderer.invoke('automation:click', fc.args);
-                   if (fc.name === 'type_text') await ipcRenderer.invoke('automation:type', fc.args);
-                   if (fc.name === 'scroll_screen') await ipcRenderer.invoke('automation:scroll', fc.args);
+                   // Security: Confirmation for dangerous actions
+                   const dangerousActions = ['system_power', 'manage_file'];
+                   if (dangerousActions.includes(fc.name) && !pendingAction) {
+                     setPendingAction(fc);
+                     setStatusMessage(`Confirm Action: ${fc.name.replace('_', ' ')}?`);
+                     continue;
+                   }
+
+                   if (fc.name === 'move_mouse') result = await ipcRenderer.invoke('automation:move', fc.args);
+                   if (fc.name === 'click_mouse') result = await ipcRenderer.invoke('automation:click', fc.args);
+                   if (fc.name === 'type_text') result = await ipcRenderer.invoke('automation:type', fc.args);
+                   if (fc.name === 'scroll_screen') result = await ipcRenderer.invoke('automation:scroll', fc.args);
                    if (fc.name === 'open_url') await ipcRenderer.invoke('automation:open_url', fc.args);
                    if (fc.name === 'system_power') await ipcRenderer.invoke('automation:system_power', fc.args);
                    if (fc.name === 'open_app') await ipcRenderer.invoke('automation:open_app', fc.args);
                    if (fc.name === 'press_key') await ipcRenderer.invoke('automation:press_key', fc.args);
                    if (fc.name === 'manage_file') await ipcRenderer.invoke('automation:manage_file', fc.args);
+                   if (fc.name === 'set_volume') await ipcRenderer.invoke('automation:set_volume', fc.args);
+                   if (fc.name === 'set_brightness') await ipcRenderer.invoke('automation:set_brightness', fc.args);
+                   if (fc.name === 'toggle_wifi') await ipcRenderer.invoke('automation:toggle_wifi', fc.args);
+                   if (fc.name === 'toggle_bluetooth') await ipcRenderer.invoke('automation:toggle_bluetooth', fc.args);
+                   if (fc.name === 'toggle_camera') {
+                     if (fc.args.enabled !== isCameraPreviewOpen) toggleCameraPreview();
+                     result = "ok";
+                   }
+                   if (fc.name === 'toggle_microphone') {
+                     setConfig(p => ({...p, isMuted: !fc.args.enabled}));
+                     result = "ok";
+                   }
+                   
                    setStatusMessage(`AI Action: ${fc.name.replace('_', ' ')}`);
                    setTimeout(() => setStatusMessage(null), 2000);
                 } else {
@@ -534,6 +619,60 @@ const App: React.FC = () => {
       className={`lumina-capsule ${isConnected ? 'connected' : ''} ${isInteracting ? 'vibrating' : ''}`} 
       style={{ WebkitAppRegion: 'drag' } as any}
     >
+      {/* Confirmation Overlay */}
+      <AnimatePresence>
+        {pendingAction && (
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            className="absolute inset-0 z-50 bg-black/80 backdrop-blur-md flex flex-col items-center justify-center p-4 rounded-[28px]"
+          >
+            <p className="text-white text-sm font-medium mb-4 text-center">
+              Confirm {pendingAction.name.replace('_', ' ')}?
+            </p>
+            <div className="flex gap-4">
+              <button 
+                onClick={async () => {
+                  const fc = pendingAction;
+                  setPendingAction(null);
+                  let result = "ok";
+                  if (fc.name === 'system_power') result = await ipcRenderer.invoke('automation:system_power', fc.args);
+                  if (fc.name === 'manage_file') result = await ipcRenderer.invoke('automation:manage_file', fc.args);
+                  
+                  if (sessionRef.current) {
+                    sessionRef.current.sendToolResponse({
+                      functionResponses: { id: fc.id, name: fc.name, response: { result: result } }
+                    });
+                  }
+                  setStatusMessage("Action Confirmed");
+                  setTimeout(() => setStatusMessage(null), 2000);
+                }}
+                className="px-4 py-2 bg-cyan-500 text-black rounded-lg text-xs font-bold hover:bg-cyan-400 transition-colors"
+              >
+                Confirm
+              </button>
+              <button 
+                onClick={() => {
+                  const fc = pendingAction;
+                  setPendingAction(null);
+                  if (sessionRef.current) {
+                    sessionRef.current.sendToolResponse({
+                      functionResponses: { id: fc.id, name: fc.name, response: { result: "User cancelled the action" } }
+                    });
+                  }
+                  setStatusMessage("Action Cancelled");
+                  setTimeout(() => setStatusMessage(null), 2000);
+                }}
+                className="px-4 py-2 bg-white/10 text-white rounded-lg text-xs font-bold hover:bg-white/20 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <video ref={videoRef} autoPlay playsInline muted className="hidden" />
       <canvas ref={canvasRef} className="hidden" />
       

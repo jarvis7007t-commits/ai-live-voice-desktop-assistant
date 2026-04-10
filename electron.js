@@ -1,5 +1,5 @@
 
-const { app, BrowserWindow, ipcMain, screen, Tray, Menu, shell, desktopCapturer } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, Tray, Menu, shell, desktopCapturer, globalShortcut } = require('electron');
 const path = require('path');
 const { exec } = require('child_process');
 const fs = require('fs');
@@ -206,6 +206,62 @@ ipcMain.handle('automation:press_key', async (event, { key }) => {
   }
 });
 
+ipcMain.handle('automation:set_volume', async (event, { level }) => {
+  console.log(`Automation: Setting volume to ${level}`);
+  try {
+    // level is 0-100. PowerShell uses a different scale or specific commands.
+    // Using nircmd if available is easier, but let's stick to native PowerShell.
+    const script = `
+      $obj = New-Object -ComObject WScript.Shell
+      $current = ${level} / 100 * 50
+      for($i=0; $i -lt 50; $i++) { $obj.SendKeys([char]174) }
+      for($i=0; $i -lt $current; $i++) { $obj.SendKeys([char]175) }
+    `;
+    await runPowerShell(script);
+    return "ok";
+  } catch (e) {
+    return `error: ${e.message}`;
+  }
+});
+
+ipcMain.handle('automation:set_brightness', async (event, { level }) => {
+  console.log(`Automation: Setting brightness to ${level}`);
+  try {
+    await runPowerShell(`(Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightnessMethods).WmiSetBrightness(1, ${level})`);
+    return "ok";
+  } catch (e) {
+    return `error: ${e.message}`;
+  }
+});
+
+ipcMain.handle('automation:toggle_wifi', async (event, { enabled }) => {
+  console.log(`Automation: Setting WiFi to ${enabled}`);
+  try {
+    const status = enabled ? 'Enabled' : 'Disabled';
+    await runPowerShell(`Get-NetAdapter | Where-Object {$_.InterfaceDescription -like '*Wi-Fi*'} | ${enabled ? 'Enable-NetAdapter' : 'Disable-NetAdapter'} -Confirm:$false`);
+    return "ok";
+  } catch (e) {
+    return `error: ${e.message}`;
+  }
+});
+
+ipcMain.handle('automation:toggle_bluetooth', async (event, { enabled }) => {
+  console.log(`Automation: Setting Bluetooth to ${enabled}`);
+  try {
+    // Bluetooth toggle is harder natively without 3rd party tools, but we can try via service or radio
+    await runPowerShell(`
+      if ("${enabled}" -eq "True") {
+        Start-Service bthserv -ErrorAction SilentlyContinue
+      } else {
+        Stop-Service bthserv -Force -ErrorAction SilentlyContinue
+      }
+    `);
+    return "ok";
+  } catch (e) {
+    return `error: ${e.message}`;
+  }
+});
+
 ipcMain.handle('automation:manage_file', (event, { action, filePath, content }) => {
   console.log(`Automation: File ${action} on ${filePath}`);
   try {
@@ -252,4 +308,26 @@ ipcMain.on('open-video-window', () => {
 app.whenReady().then(() => {
   createMainWindow();
   createTray();
+
+  // Global Shortcut: Alt+Space to show/focus
+  globalShortcut.register('Alt+Space', () => {
+    if (mainWindow) {
+      if (mainWindow.isVisible()) {
+        mainWindow.hide();
+      } else {
+        mainWindow.show();
+        mainWindow.focus();
+      }
+    }
+  });
+
+  // Auto-start on login
+  app.setLoginItemSettings({
+    openAtLogin: true,
+    path: app.getPath('exe')
+  });
+});
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
 });
