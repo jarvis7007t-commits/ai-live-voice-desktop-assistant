@@ -3,6 +3,7 @@ ollama
 flask
 flask-cors
 python-dotenv
+requests
 PyQt6
 pyautogui
 opencv-python

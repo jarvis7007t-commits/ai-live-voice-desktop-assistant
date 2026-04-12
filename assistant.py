@@ -1,10 +1,9 @@
 import os
 import json
-import ollama
+import requests
+import time
 from flask import Flask, request, Response, stream_with_context
 from flask_cors import CORS
-from google import genai
-from google.genai import types as genai_types
 from dotenv import load_dotenv
 from tools import open_application, download_file, create_file, run_command, open_url
 
@@ -18,14 +17,33 @@ CORS(app)
 OLLAMA_ENABLED = os.getenv("OLLAMA_ENABLED", "true").lower() == "true"
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3.5:9b")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+OLLAMA_URL = "http://localhost:11434/api/chat"
 
-# Initialize Gemini Client if key is present
-gemini_client = None
-if GEMINI_API_KEY:
-    gemini_client = genai.Client(api_key=GEMINI_API_KEY)
+# Initialize Gemini Client lazily
+def get_gemini_client(api_key=None):
+    key = api_key or GEMINI_API_KEY
+    if not key:
+        return None
+    try:
+        from google import genai
+        return genai.Client(api_key=key)
+    except ImportError:
+        print("google-genai library not installed.")
+        return None
+    except Exception as e:
+        print(f"Failed to initialize Gemini client: {e}")
+        return None
 
-# Define tools for Ollama
-TOOLS = [
+@app.route('/health', methods=['GET'])
+def health():
+    return {
+        "status": "ok",
+        "ollama_enabled": OLLAMA_ENABLED,
+        "gemini_configured": GEMINI_API_KEY is not None and GEMINI_API_KEY != ""
+    }
+
+# Define tools for AI
+TOOLS_DEF = [
     {
         'type': 'function',
         'function': {
@@ -108,39 +126,29 @@ AVAILABLE_TOOLS = {
     'open_url': open_url
 }
 
-def call_ollama(messages, model=OLLAMA_MODEL, stream=False):
-    """Helper to call Ollama with tool support."""
-    if stream:
-        return ollama.chat(model=model, messages=messages, stream=True)
-    
-    # Handle tool calls in a loop for non-streaming initial call
-    while True:
-        response = ollama.chat(model=model, messages=messages, tools=TOOLS)
-        
-        if not response['message'].get('tool_calls'):
-            return response
-            
-        messages.append(response['message'])
-        
-        for tool in response['message']['tool_calls']:
-            name = tool['function']['name']
-            args = tool['function']['arguments']
-            print(f"[Ollama] Executing tool: {name} with arguments: {args}")
-            
-            if name in AVAILABLE_TOOLS:
-                try:
-                    result = AVAILABLE_TOOLS[name](**args)
-                except Exception as e:
-                    result = f"Error executing tool: {str(e)}"
-            else:
-                result = f"Error: Tool {name} not found"
-            
-            messages.append({'role': 'tool', 'content': str(result)})
+def call_ollama_api(messages, model, stream=False):
+    """Call Ollama API using requests for better control."""
+    payload = {
+        "model": model,
+        "messages": messages,
+        "stream": stream,
+        "tools": TOOLS_DEF
+    }
+    try:
+        response = requests.post(OLLAMA_URL, json=payload, timeout=30)
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        print(f"Ollama API error: {e}")
+        raise e
 
-def call_gemini(messages, stream=False):
-    """Helper to call Gemini."""
-    if not gemini_client:
-        raise Exception("Gemini API Key not configured.")
+def call_gemini_api(messages, api_key=None, stream=False):
+    """Call Gemini API using the official SDK."""
+    client = get_gemini_client(api_key)
+    if not client:
+        raise Exception("Gemini API Key not configured. Please add it in Settings.")
+    
+    from google.genai import types as genai_types
     
     # Convert messages to Gemini format
     gemini_history = []
@@ -158,13 +166,13 @@ def call_gemini(messages, stream=False):
     last_msg = gemini_history.pop() if gemini_history else {'role': 'user', 'parts': [{'text': ''}]}
     
     if stream:
-        return gemini_client.models.generate_content_stream(
+        return client.models.generate_content_stream(
             model='gemini-2.0-flash',
             contents=gemini_history + [last_msg],
             config=genai_types.GenerateContentConfig(system_instruction=system_instruction)
         )
     else:
-        response = gemini_client.models.generate_content(
+        response = client.models.generate_content(
             model='gemini-2.0-flash',
             contents=gemini_history + [last_msg],
             config=genai_types.GenerateContentConfig(system_instruction=system_instruction)
@@ -178,6 +186,7 @@ def ask():
     history = data.get('history', [])
     use_local = data.get('useLocalOllama', True)
     requested_model = data.get('model', OLLAMA_MODEL)
+    api_key = data.get('apiKey')
     
     # Prepare messages
     messages = [
@@ -193,33 +202,71 @@ def ask():
     def generate():
         nonlocal messages
         try:
-            # Try Ollama if requested and enabled
+            # 1. Try Ollama if requested and enabled
             if use_local and OLLAMA_ENABLED:
                 try:
                     print(f"[Wardenix] Attempting Ollama with model: {requested_model}...")
-                    # First call to handle tools (non-streaming)
-                    final_response = call_ollama(messages, model=requested_model, stream=False)
                     
-                    # Now stream the final content if any
-                    content = final_response['message']['content']
-                    if content:
-                        yield content
-                    return
+                    # Check if Ollama is alive first (fast check)
+                    try:
+                        requests.get("http://localhost:11434/api/tags", timeout=1)
+                    except:
+                        raise Exception("Ollama service not reachable")
+
+                    # Handle tool calls in a loop
+                    while True:
+                        response = call_ollama_api(messages, requested_model, stream=False)
+                        msg = response.get('message', {})
+                        
+                        if not msg.get('tool_calls'):
+                            # Final response
+                            messages.append(msg)
+                            if msg.get('content'):
+                                yield msg['content']
+                            return
+                            
+                        messages.append(msg)
+                        
+                        for tool in msg['tool_calls']:
+                            name = tool['function']['name']
+                            args = tool['function']['arguments']
+                            print(f"[Ollama] Tool: {name}({args})")
+                            
+                            if name in AVAILABLE_TOOLS:
+                                try:
+                                    result = AVAILABLE_TOOLS[name](**args)
+                                except Exception as e:
+                                    result = f"Error: {str(e)}"
+                            else:
+                                result = f"Error: Tool {name} not found"
+                            
+                            messages.append({'role': 'tool', 'content': str(result)})
+                            
                 except Exception as e:
                     print(f"[Wardenix] Ollama failed: {str(e)}. Falling back to Gemini...")
             
-            # Fallback to Gemini
+            # 2. Fallback to Gemini
             print("[Wardenix] Using Gemini...")
-            stream = call_gemini(messages, stream=True)
-            for chunk in stream:
-                if chunk.text:
-                    yield chunk.text
+            try:
+                stream = call_gemini_api(messages, api_key=api_key, stream=True)
+                has_content = False
+                for chunk in stream:
+                    if chunk.text:
+                        has_content = True
+                        yield chunk.text
+                
+                if not has_content:
+                    yield "Wardenix: I received an empty response from Gemini. Please try again."
+            except Exception as e:
+                print(f"[Wardenix] Gemini failed: {str(e)}")
+                yield f"Error: {str(e)}"
                     
         except Exception as e:
+            print(f"[Wardenix] Critical error: {str(e)}")
             yield f"Error: {str(e)}"
 
     return Response(stream_with_context(generate()), mimetype='text/plain')
 
 if __name__ == "__main__":
     print(f"Wardenix Backend starting on port 5000...")
-    app.run(port=5000, debug=False)
+    app.run(host='0.0.0.0', port=5000, debug=False)

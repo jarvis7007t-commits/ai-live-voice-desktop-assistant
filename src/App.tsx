@@ -334,6 +334,7 @@ export const App: React.FC = () => {
                 query: transcript, 
                 useLocalOllama: config.useLocalOllama,
                 model: config.model,
+                apiKey: config.customApiKey,
                 history: transcriptions.map(t => ({ role: t.role === 'user' ? 'user' : 'assistant', content: t.text }))
               })
             });
@@ -592,6 +593,7 @@ export const App: React.FC = () => {
                 query: text, 
                 useLocalOllama: config.useLocalOllama,
                 model: config.model,
+                apiKey: config.customApiKey,
                 history: transcriptions.map(t => ({ role: t.role === 'user' ? 'user' : 'assistant', content: t.text }))
               })
             });
