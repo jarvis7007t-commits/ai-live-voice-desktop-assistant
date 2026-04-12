@@ -1,23 +1,49 @@
 import os
+import sys
+
+print("--- ASSISTANT.PY STARTING ---")
+sys.stdout.flush()
+
 import json
 import requests
 import time
-from flask import Flask, request, Response, stream_with_context
-from flask_cors import CORS
-from dotenv import load_dotenv
+
+try:
+    from flask import Flask, request, Response, stream_with_context
+    from flask_cors import CORS
+    from dotenv import load_dotenv
+except ImportError as e:
+    print(f"CRITICAL ERROR: Missing Python dependency: {e}")
+    print("Please run: pip install flask flask-cors python-dotenv requests")
+    sys.stdout.flush()
+    raise e
+
 from tools import open_application, download_file, create_file, run_command, open_url
 
 # Load environment variables
-load_dotenv()
+try:
+    load_dotenv()
+except Exception as e:
+    print(f"Warning: load_dotenv failed: {e}")
 
 app = Flask(__name__)
 CORS(app)
+
+@app.before_request
+def log_request_info():
+    print(f"DEBUG: Request: {request.method} {request.path}")
+    sys.stdout.flush()
 
 # Configuration
 OLLAMA_ENABLED = os.getenv("OLLAMA_ENABLED", "true").lower() == "true"
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3.5:9b")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 OLLAMA_URL = "http://localhost:11434/api/chat"
+
+print("--- Wardenix Backend Initializing ---")
+print(f"Ollama Enabled: {OLLAMA_ENABLED}")
+print(f"Ollama Model: {OLLAMA_MODEL}")
+sys.stdout.flush()
 
 # Initialize Gemini Client lazily
 def get_gemini_client(api_key=None):
@@ -187,6 +213,13 @@ def ask():
     use_local = data.get('useLocalOllama', True)
     requested_model = data.get('model', OLLAMA_MODEL)
     api_key = data.get('apiKey')
+    is_first_interaction = data.get('isFirstInteraction', False)
+
+    # VAD/Noise filtering: Ignore empty or very short queries
+    # Reduced to 3 characters to allow short greetings like "Hi" or "Hey"
+    if not query or len(str(query).strip()) < 3:
+        print(f"[Wardenix] Ignoring potential noise/short query: '{query}'")
+        return Response("", mimetype='text/plain')
     
     # Prepare messages
     messages = [
@@ -209,9 +242,36 @@ def ask():
                     
                     # Check if Ollama is alive first (fast check)
                     try:
-                        requests.get("http://localhost:11434/api/tags", timeout=1)
-                    except:
-                        raise Exception("Ollama service not reachable")
+                        tags_resp = requests.get("http://localhost:11434/api/tags", timeout=2)
+                        tags_resp.raise_for_status()
+                        available_models = [m['name'] for m in tags_resp.json().get('models', [])]
+                        
+                        # Check if requested model exists
+                        if requested_model not in available_models and (requested_model + ":latest") not in available_models:
+                            print(f"[Wardenix] Model {requested_model} not found in Ollama. Available: {available_models}")
+                            
+                            # Smart fallback: Try to find a similar model
+                            fallback_model = None
+                            if available_models:
+                                # Try to find any qwen model
+                                qwen_models = [m for m in available_models if 'qwen' in m.lower()]
+                                if qwen_models:
+                                    fallback_model = qwen_models[0]
+                                else:
+                                    fallback_model = available_models[0]
+                            
+                            if fallback_model:
+                                print(f"[Wardenix] Falling back to available model: {fallback_model}")
+                                requested_model = fallback_model
+                            else:
+                                raise Exception(f"Model '{requested_model}' not found in Ollama and no other models available. Please run 'ollama pull {requested_model}' in your terminal.")
+                    except requests.exceptions.ConnectionError:
+                        raise Exception("Ollama service not reachable at http://localhost:11434. Please ensure Ollama is running on your PC.")
+                    except Exception as e:
+                        if "not found in Ollama" in str(e):
+                            raise e
+                        print(f"[Wardenix] Ollama tags check failed: {e}")
+                        # Continue anyway, tags might be empty but model might work
 
                     # Handle tool calls in a loop
                     while True:
@@ -221,8 +281,11 @@ def ask():
                         if not msg.get('tool_calls'):
                             # Final response
                             messages.append(msg)
-                            if msg.get('content'):
-                                yield msg['content']
+                            content = msg.get('content', '').strip()
+                            if content:
+                                yield content
+                            else:
+                                yield "Wardenix: Ollama returned an empty response. Please check if the model is correctly installed."
                             return
                             
                         messages.append(msg)
@@ -246,6 +309,10 @@ def ask():
                     print(f"[Wardenix] Ollama failed: {str(e)}. Falling back to Gemini...")
             
             # 2. Fallback to Gemini
+            if not api_key and not GEMINI_API_KEY:
+                yield "Wardenix: Ollama failed and Gemini API Key is not configured. Please check your Ollama connection or add a Gemini API Key in Settings."
+                return
+
             print("[Wardenix] Using Gemini...")
             try:
                 stream = call_gemini_api(messages, api_key=api_key, stream=True)
@@ -268,5 +335,11 @@ def ask():
     return Response(stream_with_context(generate()), mimetype='text/plain')
 
 if __name__ == "__main__":
-    print(f"Wardenix Backend starting on port 5000...")
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    try:
+        print(f"Wardenix Backend starting on port 5055...")
+        sys.stdout.flush()
+        # Use 127.0.0.1 for local communication between Vite proxy and Flask
+        app.run(host='127.0.0.1', port=5055, debug=False)
+    except Exception as e:
+        print(f"FATAL ERROR: Could not start Flask server: {e}")
+        sys.stdout.flush()

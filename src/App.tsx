@@ -164,7 +164,43 @@ export const App: React.FC = () => {
   
   const [isUserTalking, setIsUserTalking] = useState(false);
   const [isModelTalking, setIsModelTalking] = useState(false);
+  const isFirstInteractionRef = useRef(true);
+  const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const lastTranscriptRef = useRef("");
+  const vadAudioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const isListeningActiveRef = useRef(false);
+  const volumeThreshold = 0.15; // Increased threshold to avoid noise
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+
+  // Backend health check with retries
+  useEffect(() => {
+    let retries = 0;
+    const maxRetries = 5;
+    
+    const checkBackend = async () => {
+      try {
+        const response = await fetch('/health');
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        console.log("[Wardenix] Backend Health:", data);
+        setStatusMessage(""); // Clear any previous connection errors
+      } catch (error) {
+        console.warn(`[Wardenix] Backend check failed (attempt ${retries + 1}/${maxRetries}):`, error);
+        if (retries < maxRetries) {
+          retries++;
+          setTimeout(checkBackend, 2000);
+        } else {
+          console.error("[Wardenix] Backend unreachable after multiple attempts.");
+          setStatusMessage("Backend connection failed");
+        }
+      }
+    };
+    
+    // Start checking after a short delay
+    const timer = setTimeout(checkBackend, 1000);
+    return () => clearTimeout(timer);
+  }, []);
   const [isCameraHardwareMissing, setIsCameraHardwareMissing] = useState(false);
   const [isAutomationAuthorized, setIsAutomationAuthorized] = useState(false);
   const [pendingAction, setPendingAction] = useState<{name: string, args: any, id: string} | null>(null);
@@ -177,6 +213,9 @@ export const App: React.FC = () => {
     localStorage.setItem('wardenix_history', JSON.stringify(transcriptions.slice(-50)));
   }, [transcriptions]);
   
+  const statusRef = useRef(status);
+  useEffect(() => { statusRef.current = status; }, [status]);
+
   const isMutedRef = useRef(config.isMuted);
   const isCameraEnabledRef = useRef(config.isCameraEnabled);
   const isScreenEnabledRef = useRef(config.isScreenEnabled);
@@ -294,6 +333,51 @@ export const App: React.FC = () => {
       if (ipcRenderer) ipcRenderer.send('resize-window', true);
       setStatus(SessionStatus.CONNECTING);
       
+      // Initialize AudioContext for volume-based VAD
+      if (!vadAudioContextRef.current) {
+        vadAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const source = vadAudioContextRef.current.createMediaStreamSource(stream);
+        analyserRef.current = vadAudioContextRef.current.createAnalyser();
+        analyserRef.current.fftSize = 256;
+        source.connect(analyserRef.current);
+      }
+
+      const checkVolume = () => {
+        if (!analyserRef.current || statusRef.current !== SessionStatus.CONNECTED) return;
+        const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
+        analyserRef.current.getByteFrequencyData(dataArray);
+        const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
+        const volume = average / 255;
+        
+        // Only process audio if listening is active (after startup delay)
+        if (isListeningActiveRef.current) {
+          if (volume > volumeThreshold) {
+            if (!isUserTalking) setIsUserTalking(true);
+            if (silenceTimerRef.current) {
+              clearTimeout(silenceTimerRef.current);
+              silenceTimerRef.current = null;
+            }
+          } else {
+            if (isUserTalking && !silenceTimerRef.current) {
+              silenceTimerRef.current = setTimeout(() => {
+                setIsUserTalking(false);
+                silenceTimerRef.current = null;
+              }, 2000); // 2s silence threshold for more stability
+            }
+          }
+        }
+        requestAnimationFrame(checkVolume);
+      };
+      checkVolume();
+
+      // Startup delay: Ignore all input for the first 2.5 seconds
+      isListeningActiveRef.current = false;
+      setTimeout(() => {
+        isListeningActiveRef.current = true;
+        console.log("[Wardenix] Listening active after startup delay");
+      }, 2500);
+
       // Initialize Speech Recognition for Voice Input
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       if (!SpeechRecognition) {
@@ -314,13 +398,27 @@ export const App: React.FC = () => {
       };
 
       recognition.onresult = async (event: any) => {
+        if (!isListeningActiveRef.current) return; // Ignore input during startup delay
+
         const lastResult = event.results[event.results.length - 1];
-        const transcript = lastResult[0].transcript;
+        const transcript = lastResult[0].transcript.trim();
+        const confidence = lastResult[0].confidence;
         
         if (lastResult.isFinal) {
-          console.log("User said:", transcript);
-          setIsUserTalking(false);
+          console.log("User said:", transcript, "Confidence:", confidence);
           
+          // Stricter VAD & Noise Filtering:
+          // 1. Minimum 3 characters for a meaningful command (e.g., "Hi", "Run")
+          // 2. Confidence threshold (0.65)
+          // 3. Ignore duplicates
+          if (transcript.length < 3 || confidence < 0.65 || transcript === lastTranscriptRef.current) {
+            console.log("Ignoring noise/short/low-confidence/duplicate transcript");
+            return;
+          }
+
+          lastTranscriptRef.current = transcript;
+          isFirstInteractionRef.current = false; // User has spoken
+
           // Add user message to history
           const userMsg: TranscriptionEntry = { role: 'user', text: transcript };
           setTranscriptions(prev => [...prev, userMsg]);
@@ -335,6 +433,7 @@ export const App: React.FC = () => {
                 useLocalOllama: config.useLocalOllama,
                 model: config.model,
                 apiKey: config.customApiKey,
+                isFirstInteraction: isFirstInteractionRef.current,
                 history: transcriptions.map(t => ({ role: t.role === 'user' ? 'user' : 'assistant', content: t.text }))
               })
             });
@@ -365,10 +464,16 @@ export const App: React.FC = () => {
               });
             }
             
-            // Speak the final response
-            const utterance = new SpeechSynthesisUtterance(fullText);
-            utterance.onend = () => setIsModelTalking(false);
-            window.speechSynthesis.speak(utterance);
+            // Speak the final response if not empty
+            if (fullText.trim()) {
+              window.speechSynthesis.cancel(); // Clear any pending speech
+              const utterance = new SpeechSynthesisUtterance(fullText);
+              utterance.onend = () => setIsModelTalking(false);
+              window.speechSynthesis.speak(utterance);
+            } else {
+              console.warn("Empty response from backend, nothing to speak.");
+              setIsModelTalking(false);
+            }
             
           } catch (e) {
             console.error("Backend error:", e);
@@ -377,12 +482,18 @@ export const App: React.FC = () => {
           }
         } else {
           setIsUserTalking(true);
+          // Reset silence timer when user starts talking
+          if (silenceTimerRef.current) {
+            clearTimeout(silenceTimerRef.current);
+            silenceTimerRef.current = null;
+          }
         }
       };
 
       recognition.onerror = (event: any) => {
         console.error("Recognition error:", event.error);
         setStatusMessage(`Mic error: ${event.error}`);
+        setStatus(SessionStatus.IDLE);
       };
 
       recognition.onend = () => {
@@ -580,6 +691,7 @@ export const App: React.FC = () => {
         onClose={() => setConfig(prev => ({ ...prev, isChatWindowOpen: false }))}
         isConnected={isConnected}
         onSendMessage={async (text) => {
+          isFirstInteractionRef.current = false;
           // Add user message to history
           const userMsg: TranscriptionEntry = { role: 'user', text };
           setTranscriptions(prev => [...prev, userMsg]);
