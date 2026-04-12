@@ -60,12 +60,10 @@
     cursor: grabbing;
   }
 
-  .vibrating {
-    animation: stable-vibrate 0.2s infinite ease-in-out;
+  .active {
     border-color: #22d3ee;
     box-shadow: 0 0 15px rgba(34, 211, 238, 0.4);
   }
-
 
   .section-vortex {
     position: relative;

@@ -1,199 +1,21 @@
 
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
-import { GoogleGenAI, Modality, LiveServerMessage, Type, FunctionDeclaration } from '@google/genai';
 import { motion, AnimatePresence } from 'motion/react';
 import { Mic, MicOff, Video, VideoOff, Settings, Globe, PhoneOff, MousePointer2 } from 'lucide-react';
 import { SessionStatus, LiveConfig, UserProfile, AISetting, TranscriptionEntry } from './types';
-import { createBlob, decode, decodeAudioData } from './utils/audio-utils';
 import Visualizer from './components/Visualizer';
 import SettingsModal from './components/SettingsModal';
 import AuthModal from './components/AuthModal';
+import ChatWindow from './components/ChatWindow';
 
 const isElectron = typeof window !== 'undefined' && (window as any).process && (window as any).process.type;
 const ipcRenderer = isElectron ? (window as any).require('electron').ipcRenderer : null;
 
-const MODEL_NAME = 'gemini-3.1-flash-live-preview';
+const MODEL_NAME = 'qwen3.5:9b';
 const FRAME_RATE = 2; 
 
-// --- Digital Mouse Tool Declarations ---
-const automationTools: FunctionDeclaration[] = [
-  {
-    name: 'move_mouse',
-    parameters: {
-      type: Type.OBJECT,
-      description: 'Moves the system mouse cursor to specific coordinates.',
-      properties: {
-        x: { type: Type.NUMBER, description: 'Horizontal pixel coordinate.' },
-        y: { type: Type.NUMBER, description: 'Vertical pixel coordinate.' },
-      },
-      required: ['x', 'y'],
-    },
-  },
-  {
-    name: 'click_mouse',
-    parameters: {
-      type: Type.OBJECT,
-      description: 'Performs a mouse click.',
-      properties: {
-        button: { type: Type.STRING, description: 'left or right', enum: ['left', 'right'] },
-        double: { type: Type.BOOLEAN, description: 'Whether to double click.' },
-      },
-      required: ['button'],
-    },
-  },
-  {
-    name: 'type_text',
-    parameters: {
-      type: Type.OBJECT,
-      description: 'Types a string of text into the currently focused field.',
-      properties: {
-        text: { type: Type.STRING, description: 'The text to type.' },
-      },
-      required: ['text'],
-    },
-  },
-  {
-    name: 'scroll_screen',
-    parameters: {
-      type: Type.OBJECT,
-      description: 'Scrolls the screen up or down.',
-      properties: {
-        direction: { type: Type.STRING, enum: ['up', 'down'] },
-        amount: { type: Type.NUMBER, description: 'Pixels to scroll.' },
-      },
-      required: ['direction', 'amount'],
-    },
-  },
-  {
-    name: 'open_url',
-    parameters: {
-      type: Type.OBJECT,
-      description: 'Opens a specific URL in the default web browser.',
-      properties: {
-        url: { type: Type.STRING, description: 'The URL to open (e.g., https://google.com).' },
-      },
-      required: ['url'],
-    },
-  },
-  {
-    name: 'system_power',
-    parameters: {
-      type: Type.OBJECT,
-      description: 'Controls the system power state (shutdown or restart).',
-      properties: {
-        action: { type: Type.STRING, enum: ['shutdown', 'restart'], description: 'The power action to perform.' },
-      },
-      required: ['action'],
-    },
-  },
-  {
-    name: 'open_app',
-    parameters: {
-      type: Type.OBJECT,
-      description: 'Opens a specific application on the PC (e.g., VS Code, WhatsApp, Chrome).',
-      properties: {
-        name: { type: Type.STRING, description: 'The name or path of the application to open.' },
-      },
-      required: ['name'],
-    },
-  },
-  {
-    name: 'press_key',
-    parameters: {
-      type: Type.OBJECT,
-      description: 'Presses a special key (e.g., enter, tab, esc, backspace).',
-      properties: {
-        key: { type: Type.STRING, description: 'The key to press (e.g., enter, tab, escape, backspace, up, down, left, right).' },
-      },
-      required: ['key'],
-    },
-  },
-  {
-    name: 'set_volume',
-    parameters: {
-      type: Type.OBJECT,
-      description: 'Sets the system volume level.',
-      properties: {
-        level: { type: Type.NUMBER, description: 'Volume level from 0 to 100.' },
-      },
-      required: ['level'],
-    },
-  },
-  {
-    name: 'set_brightness',
-    parameters: {
-      type: Type.OBJECT,
-      description: 'Sets the screen brightness level.',
-      properties: {
-        level: { type: Type.NUMBER, description: 'Brightness level from 0 to 100.' },
-      },
-      required: ['level'],
-    },
-  },
-  {
-    name: 'toggle_wifi',
-    parameters: {
-      type: Type.OBJECT,
-      description: 'Enables or disables WiFi.',
-      properties: {
-        enabled: { type: Type.BOOLEAN, description: 'True to enable, False to disable.' },
-      },
-      required: ['enabled'],
-    },
-  },
-  {
-    name: 'toggle_bluetooth',
-    parameters: {
-      type: Type.OBJECT,
-      description: 'Enables or disables Bluetooth.',
-      properties: {
-        enabled: { type: Type.BOOLEAN, description: 'True to enable, False to disable.' },
-      },
-      required: ['enabled'],
-    },
-  },
-  {
-    name: 'toggle_camera',
-    parameters: {
-      type: Type.OBJECT,
-      description: 'Enables or disables the system camera.',
-      properties: {
-        enabled: { type: Type.BOOLEAN, description: 'True to enable, False to disable.' },
-      },
-      required: ['enabled'],
-    },
-  },
-  {
-    name: 'toggle_microphone',
-    parameters: {
-      type: Type.OBJECT,
-      description: 'Mutes or unmutes the system microphone.',
-      properties: {
-        enabled: { type: Type.BOOLEAN, description: 'True to unmute, False to mute.' },
-      },
-      required: ['enabled'],
-    },
-  },
-  {
-    name: 'manage_file',
-    parameters: {
-      type: Type.OBJECT,
-      description: 'Creates, writes to, or deletes files on the PC. Use this for coding and project management.',
-      properties: {
-        action: { type: Type.STRING, enum: ['create', 'write', 'delete'], description: 'The file action to perform.' },
-        filePath: { type: Type.STRING, description: 'The full path to the file.' },
-        content: { type: Type.STRING, description: 'The content to write (for create/write actions).' },
-      },
-      required: ['action', 'filePath'],
-    },
-  }
-];
-
-const App: React.FC = () => {
-  const queryParams = new URLSearchParams(window.location.search);
-  const isCameraView = queryParams.get('view') === 'camera';
-  
-  // --- MAIN ASSISTANT LOGIC ---
+// --- MAIN ASSISTANT LOGIC ---
+export const App: React.FC = () => {
   const [status, setStatus] = useState<SessionStatus>(SessionStatus.IDLE);
   const [user, setUser] = useState<UserProfile>({
     email: '',
@@ -203,16 +25,17 @@ const App: React.FC = () => {
 
   const initialAISettings: AISetting[] = [
     { 
-      id: 'gemini', 
-      name: 'Gemini AI (Free Tier)', 
-      description: 'Google\'s high-speed models from AI Studio Free Tier.', 
+      id: 'ollama', 
+      name: 'Wardenix (Local Ollama)', 
+      description: 'Local high-performance model running on your hardware.', 
       enabled: true, 
       icon: 'sparkles',
       versions: [
-        { id: MODEL_NAME, name: 'Gemini 3.1 Flash Live' },
-        { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash' }
+        { id: 'qwen3.5:9b', name: 'Qwen 3.5 9B' },
+        { id: 'qwen3.5:2b', name: 'Qwen 3.5 2B' },
+        { id: 'llama3', name: 'Llama 3' }
       ],
-      selectedVersion: MODEL_NAME
+      selectedVersion: 'qwen3.5:9b'
     },
     { id: 'coding', name: 'Coding Module', description: 'Advanced full-stack development, debugging, and architecture.', enabled: true, icon: 'code' },
     { id: 'education', name: 'Education Module', description: 'Personalized learning, tutoring, and academic research.', enabled: true, icon: 'brain' },
@@ -223,37 +46,78 @@ const App: React.FC = () => {
     { id: 'security', name: 'Security System', description: 'System monitoring, vulnerability assessment, and protection.', enabled: true, icon: 'cloud' },
   ];
 
-  const [config, setConfig] = useState<LiveConfig>({
-    model: MODEL_NAME,
-    voiceName: 'Zephyr',
-    isCameraEnabled: false,
-    isScreenEnabled: false,
-    isMuted: false,
-    isMouseMode: true,
-    aiSettings: initialAISettings,
-    recordingQuality: 'HD',
-    instantShareLink: false,
-    highlightMouseCursor: true,
-    minimalDock: false,
-    useProxyServer: false,
-    autoStart: false,
-    hardwareAcceleration: true,
-    frameRate: 60,
-    audioBitrate: 256,
-    showWatermark: false,
-    countdownTimer: 3,
-    showWebcamOverlay: true,
-    language: 'EN',
-    isDeveloperMode: false
+  const [config, setConfig] = useState<LiveConfig>(() => {
+    const savedKey = localStorage.getItem('wardenix_api_key');
+    const savedDevMode = localStorage.getItem('wardenix_dev_mode') === 'true';
+    const savedVoice = localStorage.getItem('wardenix_voice_name') as any;
+    return {
+      model: MODEL_NAME,
+      voiceName: savedVoice || 'Zephyr',
+      isCameraEnabled: false,
+      isScreenEnabled: false,
+      isMuted: false,
+      isMouseMode: true,
+      aiSettings: initialAISettings,
+      recordingQuality: 'HD',
+      instantShareLink: false,
+      highlightMouseCursor: true,
+      minimalDock: false,
+      useProxyServer: false,
+      autoStart: false,
+      hardwareAcceleration: true,
+      frameRate: 60,
+      audioBitrate: 256,
+      showWatermark: false,
+      countdownTimer: 3,
+      showWebcamOverlay: true,
+      webcamSize: 180,
+      language: 'EN',
+      isDeveloperMode: savedDevMode,
+      isChatWindowOpen: false,
+      useLocalOllama: localStorage.getItem('wardenix_use_ollama') !== 'false',
+      customApiKey: savedKey || undefined
+    };
   });
+
+  useEffect(() => {
+    localStorage.setItem('wardenix_use_ollama', String(config.useLocalOllama));
+    if (config.customApiKey) {
+      localStorage.setItem('wardenix_api_key', config.customApiKey);
+    } else {
+      localStorage.removeItem('wardenix_api_key');
+    }
+    localStorage.setItem('wardenix_dev_mode', String(config.isDeveloperMode));
+    localStorage.setItem('wardenix_voice_name', config.voiceName);
+  }, [config.customApiKey, config.isDeveloperMode, config.voiceName]);
   
+  // Auto-restart session when voice changes to apply it immediately
+  useEffect(() => {
+    if (status === SessionStatus.CONNECTED) {
+      const restart = async () => {
+        stopSession();
+        // Small delay to ensure cleanup
+        setTimeout(() => {
+          startSession();
+        }, 500);
+      };
+      restart();
+    }
+  }, [config.voiceName]);
+
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [isCameraPreviewOpen, setIsCameraPreviewOpen] = useState(false);
   const cameraVideoRef = useRef<HTMLVideoElement>(null);
 
+  useEffect(() => {
+    if (isCameraPreviewOpen && cameraStream && cameraVideoRef.current) {
+      cameraVideoRef.current.srcObject = cameraStream;
+    }
+  }, [isCameraPreviewOpen, cameraStream]);
+
   const toggleCameraPreview = async () => {
     if (isCameraPreviewOpen) {
-      const stream = cameraVideoRef.current?.srcObject as MediaStream;
-      stream?.getTracks().forEach(t => t.stop());
+      cameraStream?.getTracks().forEach(t => t.stop());
+      setCameraStream(null);
       setIsCameraPreviewOpen(false);
       setConfig(p => ({...p, isCameraEnabled: false}));
     } else {
@@ -276,9 +140,8 @@ const App: React.FC = () => {
             facingMode: "user"
           } 
         });
-        if (cameraVideoRef.current) {
-          cameraVideoRef.current.srcObject = stream;
-        }
+        
+        setCameraStream(stream);
         setIsCameraPreviewOpen(true);
         setIsCameraHardwareMissing(false);
         setConfig(p => ({...p, isCameraEnabled: true}));
@@ -305,7 +168,14 @@ const App: React.FC = () => {
   const [isCameraHardwareMissing, setIsCameraHardwareMissing] = useState(false);
   const [isAutomationAuthorized, setIsAutomationAuthorized] = useState(false);
   const [pendingAction, setPendingAction] = useState<{name: string, args: any, id: string} | null>(null);
-  const [transcriptions, setTranscriptions] = useState<TranscriptionEntry[]>([]);
+  const [transcriptions, setTranscriptions] = useState<TranscriptionEntry[]>(() => {
+    const saved = localStorage.getItem('wardenix_history');
+    return saved ? JSON.parse(saved) : [];
+  });
+  
+  useEffect(() => {
+    localStorage.setItem('wardenix_history', JSON.stringify(transcriptions.slice(-50)));
+  }, [transcriptions]);
   
   const isMutedRef = useRef(config.isMuted);
   const isCameraEnabledRef = useRef(config.isCameraEnabled);
@@ -332,36 +202,47 @@ const App: React.FC = () => {
     }
   }, [isSettingsOpen, isAuthOpen, ipcRenderer]);
 
-  const stopSession = useCallback(() => {
-    isStoppingRef.current = true;
+  const stopSession = () => {
+    playSound('stop');
     if (ipcRenderer) ipcRenderer.send('resize-window', false);
-    if (frameIntervalRef.current) window.clearInterval(frameIntervalRef.current);
-    if (sessionRef.current) {
-      try {
-        sessionRef.current.close?.();
-      } catch (e) {}
+    
+    if ((window as any).recognition) {
+      (window as any).recognition.stop();
+      (window as any).recognition = null;
     }
-    sessionRef.current = null;
-    if (audioNodesRef.current?.processor) audioNodesRef.current.processor.disconnect();
-    if (audioNodesRef.current?.source) audioNodesRef.current.source.disconnect();
-    audioSourcesRef.current.forEach(s => { try { s.stop(); } catch(e) {} });
-    audioSourcesRef.current.clear();
-    const camStream = videoRef.current?.srcObject as MediaStream;
-    camStream?.getTracks().forEach(t => t.stop());
-    const screenStream = screenVideoRef.current?.srcObject as MediaStream;
-    screenStream?.getTracks().forEach(t => t.stop());
+    
+    window.speechSynthesis.cancel();
     setStatus(SessionStatus.IDLE);
     setIsUserTalking(false);
     setIsModelTalking(false);
-    setConfig(c => ({...c, isCameraEnabled: false, isScreenEnabled: false}));
-    setIsAutomationAuthorized(false);
-    setTimeout(() => { isStoppingRef.current = false; }, 500);
-  }, [ipcRenderer]);
+  };
 
   const startVisionLoop = useCallback((sessionPromise: Promise<any>) => {
     if (frameIntervalRef.current) window.clearInterval(frameIntervalRef.current);
     frameIntervalRef.current = window.setInterval(async () => {
+      // In Desktop mode, we can capture screen even if manual toggle is off
+      const isDesktop = !!ipcRenderer;
       const activeVideo = isScreenEnabledRef.current ? screenVideoRef.current : (isCameraEnabledRef.current ? videoRef.current : null);
+      
+      // If in desktop mode and screen share isn't manually on, we still want to capture frames for the AI
+      if (isDesktop && !isScreenEnabledRef.current && !isCameraEnabledRef.current) {
+        // We use the screenVideoRef which should be populated by the auto-start logic
+        if (screenVideoRef.current && screenVideoRef.current.srcObject) {
+          const ctx = canvasRef.current?.getContext('2d');
+          if (ctx && canvasRef.current) {
+            canvasRef.current.width = 640; canvasRef.current.height = 480;
+            ctx.drawImage(screenVideoRef.current, 0, 0, 640, 480);
+            const base64Data = canvasRef.current.toDataURL('image/jpeg', 0.4).split(',')[1];
+            sessionPromise.then(s => {
+              if (sessionRef.current === s && !isStoppingRef.current) {
+                s.sendRealtimeInput({ video: { data: base64Data, mimeType: 'image/jpeg' } });
+              }
+            }).catch(() => {});
+            return;
+          }
+        }
+      }
+
       if (!activeVideo || !canvasRef.current) return;
       const ctx = canvasRef.current.getContext('2d');
       if (!ctx) return;
@@ -376,236 +257,150 @@ const App: React.FC = () => {
     }, 1000 / FRAME_RATE);
   }, []);
 
+  const playSound = (type: 'start' | 'stop') => {
+    try {
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+
+      if (type === 'start') {
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(440, audioCtx.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.2);
+        gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+      } else {
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(880, audioCtx.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(440, audioCtx.currentTime + 0.2);
+        gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+      }
+
+      oscillator.start();
+      oscillator.stop(audioCtx.currentTime + 0.2);
+    } catch (e) {
+      console.warn("Audio feedback failed:", e);
+    }
+  };
+
   const startSession = async () => {
     if (status !== SessionStatus.IDLE) return;
     try {
+      playSound('start');
       if (ipcRenderer) ipcRenderer.send('resize-window', true);
       setStatus(SessionStatus.CONNECTING);
       
-      const apiKey = config.customApiKey || process.env.GEMINI_API_KEY || process.env.API_KEY;
-      if (!apiKey) {
-        setStatusMessage("API Key missing");
+      // Initialize Speech Recognition for Voice Input
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        setStatusMessage("Speech recognition not supported");
         setStatus(SessionStatus.IDLE);
         return;
       }
 
-      const ai = new GoogleGenAI({ apiKey });
-      if (!audioContextRef.current) {
-        audioContextRef.current = {
-          input: new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 }),
-          output: new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 }),
-        };
-      }
-      const { input: inputCtx, output: outputCtx } = audioContextRef.current;
-      await inputCtx.resume(); await outputCtx.resume();
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = config.language === 'HI' ? 'hi-IN' : 'en-US';
 
-      let screenStream: MediaStream | null = null;
-      if (config.isScreenEnabled) {
-        try {
-          if (ipcRenderer) {
-            // Automatic screen selection in Electron
-            const sourceId = await ipcRenderer.invoke('automation:get_screen_source');
-            if (sourceId) {
-              screenStream = await navigator.mediaDevices.getUserMedia({
-                audio: false,
-                video: {
-                  mandatory: {
-                    chromeMediaSource: 'desktop',
-                    chromeMediaSourceId: sourceId,
-                    minWidth: 1280,
-                    maxWidth: 1920,
-                    minHeight: 720,
-                    maxHeight: 1080
-                  }
+      recognition.onstart = () => {
+        setStatus(SessionStatus.CONNECTED);
+        setStatusMessage("Wardenix Online (Ollama)");
+        setTimeout(() => setStatusMessage(null), 3000);
+      };
+
+      recognition.onresult = async (event: any) => {
+        const lastResult = event.results[event.results.length - 1];
+        const transcript = lastResult[0].transcript;
+        
+        if (lastResult.isFinal) {
+          console.log("User said:", transcript);
+          setIsUserTalking(false);
+          
+          // Add user message to history
+          const userMsg: TranscriptionEntry = { role: 'user', text: transcript };
+          setTranscriptions(prev => [...prev, userMsg]);
+
+          try {
+            setIsModelTalking(true);
+            const response = await fetch('/ask', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ 
+                query: transcript, 
+                useLocalOllama: config.useLocalOllama,
+                model: config.model,
+                history: transcriptions.map(t => ({ role: t.role === 'user' ? 'user' : 'assistant', content: t.text }))
+              })
+            });
+            
+            if (!response.body) throw new Error("No response body");
+            
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let fullText = '';
+            
+            // Add initial empty model message
+            setTranscriptions(prev => [...prev, { role: 'model', text: '' }]);
+
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              
+              const chunk = decoder.decode(value, { stream: true });
+              fullText += chunk;
+              
+              // Update the last message in history with the streaming text
+              setTranscriptions(prev => {
+                const next = [...prev];
+                if (next.length > 0) {
+                  next[next.length - 1].text = fullText;
                 }
-              } as any);
+                return next;
+              });
             }
-          } else if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
-            // Browser fallback with picker
-            screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: "always" } as any, audio: false });
+            
+            // Speak the final response
+            const utterance = new SpeechSynthesisUtterance(fullText);
+            utterance.onend = () => setIsModelTalking(false);
+            window.speechSynthesis.speak(utterance);
+            
+          } catch (e) {
+            console.error("Backend error:", e);
+            setStatusMessage("Backend connection failed");
+            setIsModelTalking(false);
           }
-
-          if (screenStream && screenVideoRef.current) {
-            screenVideoRef.current.srcObject = screenStream;
-            screenVideoRef.current.onloadedmetadata = () => screenVideoRef.current.play();
-            screenStream.getTracks()[0].onended = () => setConfig(p => ({...p, isScreenEnabled: false}));
-            setConfig(p => ({...p, isScreenEnabled: true}));
-          }
-        } catch (e) {
-          console.warn("Screen share denied or unavailable", e);
-          setConfig(p => ({...p, isScreenEnabled: false}));
-          setStatusMessage("Voice-only mode (Screen denied)");
-          setTimeout(() => setStatusMessage(null), 3000);
+        } else {
+          setIsUserTalking(true);
         }
-      }
+      };
 
-      // Proactive check for microphone
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const hasMic = devices.some(device => device.kind === 'audioinput');
-      
-      if (!hasMic) {
-        setStatusMessage("No microphone detected");
-        setStatus(SessionStatus.IDLE);
-        setTimeout(() => setStatusMessage(null), 3000);
-        return;
-      }
+      recognition.onerror = (event: any) => {
+        console.error("Recognition error:", event.error);
+        setStatusMessage(`Mic error: ${event.error}`);
+      };
 
-      const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      
-      // Ensure we use a Gemini Live compatible model
-      let liveModel = config.model;
-      if (!liveModel.startsWith('gemini-')) {
-        liveModel = MODEL_NAME;
-        setStatusMessage("Using Gemini for Live Mode");
-        setTimeout(() => setStatusMessage(null), 3000);
-      } else if (liveModel.includes('pro')) {
-        // Pro models don't support Live API yet, fallback to Flash Live
-        liveModel = MODEL_NAME;
-        setStatusMessage("Live Mode requires Flash model");
-        setTimeout(() => setStatusMessage(null), 3000);
-      }
+      recognition.onend = () => {
+        if (status === SessionStatus.CONNECTED) {
+          try {
+            recognition.start(); // Keep listening
+          } catch (e) {
+            console.error("Recognition restart failed:", e);
+          }
+        }
+      };
 
-      const sessionPromise = ai.live.connect({
-        model: liveModel,
-        config: {
-          responseModalities: [Modality.AUDIO],
-          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: config.voiceName } } },
-          tools: [{ functionDeclarations: automationTools }],
-          systemInstruction: "You are Wardenix, the ultimate AI OS Assistant with FULL NATIVE SYSTEM ACCESS. You operate on a high-performance PC and have specialized modules for Coding, Education, Health, Business, Content, Automation, and Security. You can see the entire screen in real-time and control the mouse and keyboard with pixel precision. You can open any application, create complex file structures, write production-ready code, and automate any task from A to Z. You can also control system settings like volume, brightness, WiFi, and Bluetooth. When a user asks for a dangerous action (shutdown, restart, delete file), you MUST ask for confirmation first. You are fast, efficient, and have a bold, helpful personality. You are the master of this PC.",
-          inputAudioTranscription: {},
-          outputAudioTranscription: {},
-        },
-        callbacks: {
-          onopen: () => {
-            sessionPromise.then(s => { sessionRef.current = s; });
-            setStatus(SessionStatus.CONNECTED);
-            const source = inputCtx.createMediaStreamSource(audioStream);
-            const scriptProcessor = inputCtx.createScriptProcessor(4096, 1, 1);
-            scriptProcessor.onaudioprocess = (e) => {
-              if (isMutedRef.current || isStoppingRef.current) return;
-              const inputData = e.inputBuffer.getChannelData(0);
-              const sum = inputData.reduce((a, b) => a + Math.abs(b), 0);
-              setIsUserTalking(sum / inputData.length > 0.01);
-              sessionPromise.then(s => {
-                if (sessionRef.current === s && !isStoppingRef.current) {
-                  s.sendRealtimeInput({ audio: createBlob(inputData) });
-                }
-              }).catch(() => {});
-            };
-            source.connect(scriptProcessor);
-            scriptProcessor.connect(inputCtx.destination);
-            audioNodesRef.current = { source, processor: scriptProcessor };
-            startVisionLoop(sessionPromise);
-          },
-          onmessage: async (message: any) => {
-            // 1. Handle Interruption
-            if (message.serverContent?.interrupted) {
-              audioSourcesRef.current.forEach(s => { try { s.stop(); } catch(e) {} });
-              audioSourcesRef.current.clear();
-              setIsModelTalking(false);
-              return;
-            }
+      (window as any).recognition = recognition;
+      recognition.start();
 
-            // 2. Handle Tool Calls
-            if (message.toolCall) {
-              for (const fc of message.toolCall.functionCalls) {
-                let result: any = "ok";
-                if (ipcRenderer) {
-                   // Security: Confirmation for dangerous actions
-                   const dangerousActions = ['system_power', 'manage_file'];
-                   if (dangerousActions.includes(fc.name) && !pendingAction) {
-                     setPendingAction(fc);
-                     setStatusMessage(`Confirm Action: ${fc.name.replace('_', ' ')}?`);
-                     continue;
-                   }
-
-                   if (fc.name === 'move_mouse') result = await ipcRenderer.invoke('automation:move', fc.args);
-                   if (fc.name === 'click_mouse') result = await ipcRenderer.invoke('automation:click', fc.args);
-                   if (fc.name === 'type_text') result = await ipcRenderer.invoke('automation:type', fc.args);
-                   if (fc.name === 'scroll_screen') result = await ipcRenderer.invoke('automation:scroll', fc.args);
-                   if (fc.name === 'open_url') await ipcRenderer.invoke('automation:open_url', fc.args);
-                   if (fc.name === 'system_power') await ipcRenderer.invoke('automation:system_power', fc.args);
-                   if (fc.name === 'open_app') await ipcRenderer.invoke('automation:open_app', fc.args);
-                   if (fc.name === 'press_key') await ipcRenderer.invoke('automation:press_key', fc.args);
-                   if (fc.name === 'manage_file') await ipcRenderer.invoke('automation:manage_file', fc.args);
-                   if (fc.name === 'set_volume') await ipcRenderer.invoke('automation:set_volume', fc.args);
-                   if (fc.name === 'set_brightness') await ipcRenderer.invoke('automation:set_brightness', fc.args);
-                   if (fc.name === 'toggle_wifi') await ipcRenderer.invoke('automation:toggle_wifi', fc.args);
-                   if (fc.name === 'toggle_bluetooth') await ipcRenderer.invoke('automation:toggle_bluetooth', fc.args);
-                   if (fc.name === 'toggle_camera') {
-                     if (fc.args.enabled !== isCameraPreviewOpen) toggleCameraPreview();
-                     result = "ok";
-                   }
-                   if (fc.name === 'toggle_microphone') {
-                     setConfig(p => ({...p, isMuted: !fc.args.enabled}));
-                     result = "ok";
-                   }
-                   
-                   setStatusMessage(`AI Action: ${fc.name.replace('_', ' ')}`);
-                   setTimeout(() => setStatusMessage(null), 2000);
-                } else {
-                   console.log("AI requested tool call (browser mode - no-op):", fc.name, fc.args);
-                   setStatusMessage(`AI Action (Simulated): ${fc.name.replace('_', ' ')}`);
-                   setTimeout(() => setStatusMessage(null), 2000);
-                }
-                
-                sessionPromise.then(s => s.sendToolResponse({
-                  functionResponses: [{ id: fc.id, name: fc.name, response: { result: result } }]
-                })).catch(err => console.error("Tool response error:", err));
-              }
-            }
-
-            // 3. Handle Audio Output & Transcriptions
-            const modelTurn = message.serverContent?.modelTurn;
-            if (modelTurn?.parts) {
-              const audioPart = modelTurn.parts.find(p => p.inlineData?.data);
-              if (audioPart?.inlineData?.data) {
-                setIsModelTalking(true);
-                nextStartTimeRef.current = Math.max(nextStartTimeRef.current, outputCtx.currentTime);
-                const audioBuffer = await decodeAudioData(decode(audioPart.inlineData.data), outputCtx, 24000, 1);
-                const source = outputCtx.createBufferSource();
-                source.buffer = audioBuffer;
-                source.connect(outputCtx.destination);
-                source.addEventListener('ended', () => {
-                  audioSourcesRef.current.delete(source);
-                  if (audioSourcesRef.current.size === 0) setIsModelTalking(false);
-                });
-                source.start(nextStartTimeRef.current);
-                nextStartTimeRef.current += audioBuffer.duration;
-                audioSourcesRef.current.add(source);
-              }
-
-              const text = modelTurn.parts.map(p => p.text).filter(Boolean).join('');
-              if (text) {
-                setTranscriptions(prev => [...prev.slice(-10), { role: 'model', text }]);
-              }
-            }
-
-            const userTurn = message.serverContent?.userTurn;
-            if (userTurn?.parts) {
-              const text = userTurn.parts.map(p => p.text).filter(Boolean).join('');
-              if (text) {
-                setTranscriptions(prev => [...prev.slice(-10), { role: 'user', text }]);
-              }
-            }
-          },
-          onerror: (err: any) => {
-            if (isStoppingRef.current || err?.message?.includes('aborted')) {
-              console.log("Live API connection closed (expected or aborted)");
-            } else {
-              console.error("Live API Error:", err);
-            }
-            stopSession();
-          },
-          onclose: () => stopSession(),
-        },
-      });
-      sessionRef.current = await sessionPromise;
-    } catch (err: any) { 
-      console.error("Session start error:", err);
-      setStatus(SessionStatus.IDLE);
+    } catch (err: any) {
+      console.error("Failed to start session:", err);
       setStatusMessage("Connection failed");
-      setTimeout(() => setStatusMessage(null), 3000);
+      setStatus(SessionStatus.IDLE);
     }
   };
 
@@ -748,9 +543,9 @@ const App: React.FC = () => {
         <button 
           className={`control-icon ${config.isScreenEnabled ? 'icon-active-cyan' : 'icon-inactive'}`} 
           onClick={() => setConfig(p => ({...p, isScreenEnabled: !p.isScreenEnabled}))}
-          title={config.isScreenEnabled ? "Disable Screen Share" : "Enable Screen Share"}
+          title={config.isScreenEnabled ? "System Control Active (Screen Shared)" : "Enable System Control (Screen Share)"}
         >
-          <MousePointer2 size={16} />
+          {isConnected ? <MousePointer2 size={16} className="animate-pulse" /> : <MousePointer2 size={16} />}
         </button>
         
         <button 
@@ -770,6 +565,74 @@ const App: React.FC = () => {
         onLoginClick={() => {
           setIsSettingsOpen(false);
           setIsAuthOpen(true);
+        }}
+        isConnected={isConnected}
+        onSendMessage={(text) => {
+          // This was for the Gemini Live session, we can repurpose it or leave as is
+          setStatusMessage(`Command sent: "${text.substring(0, 20)}${text.length > 20 ? '...' : ''}"`);
+          setTimeout(() => setStatusMessage(null), 2000);
+        }}
+      />
+
+      <ChatWindow 
+        isOpen={config.isChatWindowOpen}
+        onClose={() => setConfig(prev => ({ ...prev, isChatWindowOpen: false }))}
+        isConnected={isConnected}
+        onSendMessage={async (text) => {
+          // Add user message to history
+          const userMsg: TranscriptionEntry = { role: 'user', text };
+          setTranscriptions(prev => [...prev, userMsg]);
+
+          try {
+            setIsModelTalking(true);
+            const response = await fetch('/ask', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ 
+                query: text, 
+                useLocalOllama: config.useLocalOllama,
+                model: config.model,
+                history: transcriptions.map(t => ({ role: t.role === 'user' ? 'user' : 'assistant', content: t.text }))
+              })
+            });
+            
+            if (!response.body) throw new Error("No response body");
+            
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let fullText = '';
+            
+            setTranscriptions(prev => [...prev, { role: 'model', text: '' }]);
+
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              
+              const chunk = decoder.decode(value, { stream: true });
+              fullText += chunk;
+              
+              setTranscriptions(prev => {
+                const next = [...prev];
+                if (next.length > 0) {
+                  next[next.length - 1].text = fullText;
+                }
+                return next;
+              });
+            }
+            
+            const utterance = new SpeechSynthesisUtterance(fullText);
+            utterance.onend = () => setIsModelTalking(false);
+            window.speechSynthesis.speak(utterance);
+            
+          } catch (e) {
+            console.error("Backend error:", e);
+            setStatusMessage("Backend connection failed");
+            setIsModelTalking(false);
+          }
+        }}
+        onSpeak={(text) => {
+          const utterance = new SpeechSynthesisUtterance(text);
+          window.speechSynthesis.speak(utterance);
         }}
       />
 
@@ -800,6 +663,13 @@ const App: React.FC = () => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <style>{`
+        .circular-video-container {
+          width: ${config.webcamSize}px !important;
+          height: ${config.webcamSize}px !important;
+        }
+      `}</style>
 
       <AnimatePresence>
         {statusMessage && (

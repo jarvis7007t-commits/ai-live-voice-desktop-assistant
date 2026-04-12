@@ -9,6 +9,8 @@ interface SettingsModalProps {
   config: LiveConfig;
   setConfig: React.Dispatch<React.SetStateAction<LiveConfig>>;
   onLoginClick: () => void;
+  onSendMessage: (text: string) => void;
+  isConnected: boolean;
 }
 
 const SettingsModal: React.FC<SettingsModalProps> = ({ 
@@ -16,15 +18,26 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   onClose, 
   config,
   setConfig,
-  onLoginClick
+  onLoginClick,
+  onSendMessage,
+  isConnected
 }) => {
   const [showAIList, setShowAIList] = useState(false);
   const [openVersionListId, setOpenVersionListId] = useState<string | null>(null);
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [isKeyVisible, setIsKeyVisible] = useState(false);
   const [isKeySaved, setIsKeySaved] = useState(!!config.customApiKey);
+  const [chatInput, setChatInput] = useState('');
 
   if (!isOpen) return null;
+
+  const handleChatSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (chatInput.trim()) {
+      onSendMessage(chatInput.trim());
+      setChatInput('');
+    }
+  };
 
   const handleSendKey = () => {
     if (apiKeyInput.trim()) {
@@ -98,9 +111,14 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         initial={{ scale: 0.95, y: 20 }}
         animate={{ scale: 1, y: 0 }}
         exit={{ scale: 0.95, y: 20 }}
-        className="bg-white w-full max-w-[450px] h-[650px] rounded-xl p-6 flex flex-col relative overflow-hidden"
+        drag
+        dragMomentum={false}
+        className="bg-white w-full max-w-[450px] h-[650px] rounded-xl p-6 flex flex-col relative overflow-hidden shadow-2xl border border-slate-200"
+        style={{ WebkitAppRegion: 'no-drag' } as any}
         onClick={e => e.stopPropagation()}
       >
+        {/* Drag Handle Area */}
+        <div className="absolute top-0 left-0 right-0 h-10 cursor-move z-0" />
         {/* Top Header with Auth Buttons */}
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-xl font-bold text-slate-900">Settings</h1>
@@ -130,6 +148,32 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
         {/* Main Content Area */}
         <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+          {/* Chat Bot Toggle Section */}
+          <div className="mb-6 p-4 rounded-xl border border-slate-200 bg-slate-50/30">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <MessageSquare size={18} className="text-blue-500" />
+                <span className="font-bold text-slate-700">Wardenix Chat Terminal</span>
+              </div>
+              <button 
+                onClick={() => {
+                  setConfig(prev => ({ ...prev, isChatWindowOpen: !prev.isChatWindowOpen }));
+                  onClose();
+                }}
+                className={`px-4 py-2 rounded-lg font-bold text-xs transition-all ${
+                  config.isChatWindowOpen 
+                    ? 'bg-red-50 text-red-600 border border-red-100' 
+                    : 'bg-blue-600 text-white shadow-md hover:bg-blue-700'
+                }`}
+              >
+                {config.isChatWindowOpen ? 'Close Terminal' : 'Open Terminal'}
+              </button>
+            </div>
+            <p className="text-[9px] text-slate-400 mt-2 px-1">
+              Open a dedicated high-tech window for text, image, and file-based interaction.
+            </p>
+          </div>
+
           {/* API Configuration Section */}
           <div className="mb-6 p-4 rounded-xl border border-slate-200 bg-slate-50/30">
             <div className="flex items-center gap-3 mb-3">
@@ -199,24 +243,80 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
           {/* Voice Selection Section */}
           <div className="mb-6 p-4 rounded-xl border border-slate-200 bg-slate-50/30">
-            <div className="flex items-center gap-3 mb-3">
-              <Mic size={18} className="text-purple-500" />
-              <span className="font-bold text-slate-700">Voice Model</span>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <Mic size={18} className="text-purple-500" />
+                <span className="font-bold text-slate-700">Voice Persona</span>
+              </div>
+              <span className="text-[10px] font-black text-purple-600 bg-purple-100 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                {config.voiceName} Active
+              </span>
             </div>
-            <div className="grid grid-cols-3 gap-2">
-              {['Puck', 'Charon', 'Kore', 'Fenrir', 'Aoede'].map(voice => (
+            <div className="grid grid-cols-5 gap-2">
+              {[
+                { name: 'Puck', color: 'bg-blue-500', desc: 'Male • Energetic' },
+                { name: 'Charon', color: 'bg-slate-700', desc: 'Male • Deep' },
+                { name: 'Kore', color: 'bg-pink-500', desc: 'Female • Soft' },
+                { name: 'Fenrir', color: 'bg-amber-600', desc: 'Male • Bold' },
+                { name: 'Zephyr', color: 'bg-indigo-500', desc: 'Female • Melodic' }
+              ].map(voice => (
                 <button
-                  key={voice}
-                  onClick={() => setConfig(prev => ({ ...prev, voiceName: voice }))}
-                  className={`px-3 py-2 rounded-lg text-xs font-bold transition-all ${
-                    config.voiceName === voice 
-                      ? 'bg-purple-600 text-white shadow-md' 
-                      : 'bg-white text-slate-600 border border-slate-200 hover:border-purple-300'
+                  key={voice.name}
+                  onClick={() => {
+                    setConfig(prev => ({ ...prev, voiceName: voice.name as any }));
+                    if (isConnected) {
+                      onSendMessage(`[SYSTEM] Restarting session to apply ${voice.name} voice...`);
+                    }
+                  }}
+                  className={`group relative flex flex-col items-center gap-1.5 p-2 rounded-xl transition-all duration-300 ${
+                    config.voiceName === voice.name 
+                      ? 'bg-white shadow-lg ring-2 ring-purple-500 scale-105' 
+                      : 'bg-white/50 hover:bg-white border border-slate-100 hover:border-purple-200'
                   }`}
+                  title={voice.desc}
                 >
-                  {voice}
+                  <div className={`w-8 h-8 rounded-full ${voice.color} flex items-center justify-center text-white shadow-inner transition-transform group-hover:scale-110`}>
+                    <Mic size={14} />
+                  </div>
+                  <span className={`text-[9px] font-bold tracking-tight ${config.voiceName === voice.name ? 'text-purple-600' : 'text-slate-500'}`}>
+                    {voice.name}
+                  </span>
+                  {config.voiceName === voice.name && (
+                    <motion.div 
+                      layoutId="voice-active"
+                      className="absolute -top-1 -right-1 w-3 h-3 bg-purple-600 rounded-full border-2 border-white flex items-center justify-center"
+                    >
+                      <div className="w-1 h-1 bg-white rounded-full animate-pulse" />
+                    </motion.div>
+                  )}
                 </button>
               ))}
+            </div>
+            <p className="text-[9px] text-slate-400 mt-3 px-1 italic">
+              * Selection is saved automatically and persists across sessions.
+            </p>
+          </div>
+
+          {/* Webcam Size Section */}
+          <div className="mb-6 p-4 rounded-xl border border-slate-200 bg-slate-50/30">
+            <div className="flex items-center gap-3 mb-3">
+              <ImageIcon size={18} className="text-cyan-500" />
+              <span className="font-bold text-slate-700">Webcam Circle Size</span>
+            </div>
+            <div className="space-y-3">
+              <input 
+                type="range" 
+                min="100" 
+                max="400" 
+                value={config.webcamSize} 
+                onChange={(e) => setConfig(prev => ({ ...prev, webcamSize: parseInt(e.target.value) }))}
+                className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-cyan-500"
+              />
+              <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase">
+                <span>Small</span>
+                <span className="text-cyan-600 bg-cyan-50 px-2 py-0.5 rounded">{config.webcamSize}px</span>
+                <span>Large</span>
+              </div>
             </div>
           </div>
 
@@ -239,6 +339,27 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                 <Settings size={24} />
               </motion.div>
             </button>
+          </div>
+
+          {/* Local Ollama Toggle */}
+          <div className="flex items-center justify-between p-4 rounded-xl border border-slate-200 bg-white text-slate-700 mb-4 hover:border-cyan-400 transition-all">
+            <div className="flex items-center gap-3">
+              <Zap size={20} className="text-cyan-500" />
+              <div>
+                <span className="font-bold text-lg block">Local Ollama</span>
+                <p className="text-[9px] text-slate-400">Use local qwen3.5:9b model for offline speed.</p>
+              </div>
+            </div>
+            <div 
+              className={`w-12 h-6 rounded-full relative transition-colors cursor-pointer ${
+                config.useLocalOllama ? 'bg-cyan-500' : 'bg-slate-200'
+              }`}
+              onClick={() => setConfig(prev => ({ ...prev, useLocalOllama: !prev.useLocalOllama }))}
+            >
+              <div className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow-sm transition-all ${
+                config.useLocalOllama ? 'left-7' : 'left-1'
+              }`} />
+            </div>
           </div>
 
           {/* AI Modules Toggle Button */}

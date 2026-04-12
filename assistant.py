@@ -1,80 +1,225 @@
 import os
-import asyncio
-import base64
 import json
+import ollama
+from flask import Flask, request, Response, stream_with_context
+from flask_cors import CORS
 from google import genai
-from automation import PCAutomation
+from google.genai import types as genai_types
 from dotenv import load_dotenv
+from tools import open_application, download_file, create_file, run_command, open_url
 
+# Load environment variables
 load_dotenv()
 
-class WardenixAssistant:
-    def __init__(self):
-        self.client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"), http_options={'api_version': 'v1alpha'})
-        self.automation = PCAutomation()
-        self.model_id = "gemini-2.0-flash-exp" # Using Flash for Live
+app = Flask(__name__)
+CORS(app)
+
+# Configuration
+OLLAMA_ENABLED = os.getenv("OLLAMA_ENABLED", "true").lower() == "true"
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3.5:9b")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+# Initialize Gemini Client if key is present
+gemini_client = None
+if GEMINI_API_KEY:
+    gemini_client = genai.Client(api_key=GEMINI_API_KEY)
+
+# Define tools for Ollama
+TOOLS = [
+    {
+        'type': 'function',
+        'function': {
+            'name': 'open_application',
+            'description': 'Open an application on the computer',
+            'parameters': {
+                'type': 'object',
+                'properties': {
+                    'app_name': {'type': 'string', 'description': 'The name or path of the application to open'},
+                },
+                'required': ['app_name'],
+            },
+        },
+    },
+    {
+        'type': 'function',
+        'function': {
+            'name': 'download_file',
+            'description': 'Download a file from a URL to a local path',
+            'parameters': {
+                'type': 'object',
+                'properties': {
+                    'url': {'type': 'string', 'description': 'The URL of the file to download'},
+                    'save_path': {'type': 'string', 'description': 'The local path where the file should be saved'},
+                },
+                'required': ['url', 'save_path'],
+            },
+        },
+    },
+    {
+        'type': 'function',
+        'function': {
+            'name': 'create_file',
+            'description': 'Create a new file with specific content',
+            'parameters': {
+                'type': 'object',
+                'properties': {
+                    'file_path': {'type': 'string', 'description': 'The path where the file should be created'},
+                    'content': {'type': 'string', 'description': 'The text content of the file'},
+                },
+                'required': ['file_path', 'content'],
+            },
+        },
+    },
+    {
+        'type': 'function',
+        'function': {
+            'name': 'run_command',
+            'description': 'Execute a shell command on the computer',
+            'parameters': {
+                'type': 'object',
+                'properties': {
+                    'command': {'type': 'string', 'description': 'The shell command to run'},
+                },
+                'required': ['command'],
+            },
+        },
+    },
+    {
+        'type': 'function',
+        'function': {
+            'name': 'open_url',
+            'description': 'Open a website URL in the default browser',
+            'parameters': {
+                'type': 'object',
+                'properties': {
+                    'url': {'type': 'string', 'description': 'The URL to open'},
+                },
+                'required': ['url'],
+            },
+        },
+    }
+]
+
+AVAILABLE_TOOLS = {
+    'open_application': open_application,
+    'download_file': download_file,
+    'create_file': create_file,
+    'run_command': run_command,
+    'open_url': open_url
+}
+
+def call_ollama(messages, model=OLLAMA_MODEL, stream=False):
+    """Helper to call Ollama with tool support."""
+    if stream:
+        return ollama.chat(model=model, messages=messages, stream=True)
+    
+    # Handle tool calls in a loop for non-streaming initial call
+    while True:
+        response = ollama.chat(model=model, messages=messages, tools=TOOLS)
         
-    async def start_session(self, audio_callback, status_callback):
-        async with self.client.aio.live.connect(model=self.model_id, config={"response_modalities": ["AUDIO"]}) as session:
-            self.session = session
+        if not response['message'].get('tool_calls'):
+            return response
             
-            # Start receiving loop
-            receive_task = asyncio.create_task(self._receive_loop(audio_callback, status_callback))
-            
-            # Send initial setup/instruction
-            instruction = "You are Wardenix, the ultimate AI OS Assistant with FULL NATIVE SYSTEM ACCESS. You control this PC via Python. You can move the mouse, type, and manage files. Be bold and helpful."
-            await session.send(instruction, end_of_turn=True)
-            
-            await receive_task
-
-    async def _receive_loop(self, audio_callback, status_callback):
-        async for message in self.session:
-            if message.server_content:
-                model_turn = message.server_content.model_turn
-                if model_turn:
-                    for part in model_turn.parts:
-                        if part.inline_data:
-                            audio_callback(part.inline_data.data)
-            
-            if message.tool_call:
-                for fc in message.tool_call.function_calls:
-                    result = await self._handle_tool_call(fc)
-                    await self.session.send(
-                        genai.types.LiveClientToolResponse(
-                            function_responses=[
-                                genai.types.FunctionResponse(
-                                    name=fc.name,
-                                    id=fc.id,
-                                    response={"result": result}
-                                )
-                            ]
-                        )
-                    )
-
-    async def _handle_tool_call(self, fc):
-        name = fc.name
-        args = fc.args
-        print(f"AI Tool Call: {name} with {args}")
+        messages.append(response['message'])
         
-        if name == "move_mouse": return self.automation.move_mouse(args['x'], args['y'])
-        if name == "click_mouse": return self.automation.click_mouse(args.get('button', 'left'), args.get('double', False))
-        if name == "type_text": return self.automation.type_text(args['text'])
-        if name == "press_key": return self.automation.press_key(args['key'])
-        if name == "set_volume": return self.automation.set_volume(args['level'])
-        if name == "set_brightness": return self.automation.set_brightness(args['level'])
-        if name == "open_app": return self.automation.open_app(args['name'])
-        if name == "manage_file": return self.automation.manage_file(args['action'], args['filePath'], args.get('content', ''))
-        
-        return "unknown tool"
+        for tool in response['message']['tool_calls']:
+            name = tool['function']['name']
+            args = tool['function']['arguments']
+            print(f"[Ollama] Executing tool: {name} with arguments: {args}")
+            
+            if name in AVAILABLE_TOOLS:
+                try:
+                    result = AVAILABLE_TOOLS[name](**args)
+                except Exception as e:
+                    result = f"Error executing tool: {str(e)}"
+            else:
+                result = f"Error: Tool {name} not found"
+            
+            messages.append({'role': 'tool', 'content': str(result)})
 
-    async def send_audio(self, audio_data):
-        await self.session.send(base64.b64encode(audio_data).decode("utf-8"), end_of_turn=False)
-
-    async def send_vision(self, frame_data):
-        await self.session.send(
-            genai.types.LiveClientRealtimeInput(
-                media_chunks=[
-                    genai.types.Blob(data=frame_data, mime_type="image/jpeg")
-                ]
-            )
+def call_gemini(messages, stream=False):
+    """Helper to call Gemini."""
+    if not gemini_client:
+        raise Exception("Gemini API Key not configured.")
+    
+    # Convert messages to Gemini format
+    gemini_history = []
+    system_instruction = "You are Wardenix, a powerful AI assistant. Help the user with their requests."
+    
+    for msg in messages:
+        if msg['role'] == 'system':
+            system_instruction = msg['content']
+        elif msg['role'] == 'user':
+            gemini_history.append({'role': 'user', 'parts': [{'text': msg['content']}]})
+        elif msg['role'] == 'assistant':
+            gemini_history.append({'role': 'model', 'parts': [{'text': msg['content']}]})
+    
+    # Last message is the current query
+    last_msg = gemini_history.pop() if gemini_history else {'role': 'user', 'parts': [{'text': ''}]}
+    
+    if stream:
+        return gemini_client.models.generate_content_stream(
+            model='gemini-2.0-flash',
+            contents=gemini_history + [last_msg],
+            config=genai_types.GenerateContentConfig(system_instruction=system_instruction)
         )
+    else:
+        response = gemini_client.models.generate_content(
+            model='gemini-2.0-flash',
+            contents=gemini_history + [last_msg],
+            config=genai_types.GenerateContentConfig(system_instruction=system_instruction)
+        )
+        return response.text
+
+@app.route('/ask', methods=['POST'])
+def ask():
+    data = request.json
+    query = data.get('query')
+    history = data.get('history', [])
+    use_local = data.get('useLocalOllama', True)
+    requested_model = data.get('model', OLLAMA_MODEL)
+    
+    # Prepare messages
+    messages = [
+        {'role': 'system', 'content': 'You are Wardenix, a powerful AI assistant with full system access. Use tools to help the user with their requests.'}
+    ]
+    
+    for msg in history:
+        role = 'assistant' if msg.get('role') in ['model', 'assistant'] else 'user'
+        messages.append({'role': role, 'content': msg.get('content', msg.get('text', ''))})
+    
+    messages.append({'role': 'user', 'content': query})
+
+    def generate():
+        nonlocal messages
+        try:
+            # Try Ollama if requested and enabled
+            if use_local and OLLAMA_ENABLED:
+                try:
+                    print(f"[Wardenix] Attempting Ollama with model: {requested_model}...")
+                    # First call to handle tools (non-streaming)
+                    final_response = call_ollama(messages, model=requested_model, stream=False)
+                    
+                    # Now stream the final content if any
+                    content = final_response['message']['content']
+                    if content:
+                        yield content
+                    return
+                except Exception as e:
+                    print(f"[Wardenix] Ollama failed: {str(e)}. Falling back to Gemini...")
+            
+            # Fallback to Gemini
+            print("[Wardenix] Using Gemini...")
+            stream = call_gemini(messages, stream=True)
+            for chunk in stream:
+                if chunk.text:
+                    yield chunk.text
+                    
+        except Exception as e:
+            yield f"Error: {str(e)}"
+
+    return Response(stream_with_context(generate()), mimetype='text/plain')
+
+if __name__ == "__main__":
+    print(f"Wardenix Backend starting on port 5000...")
+    app.run(port=5000, debug=False)

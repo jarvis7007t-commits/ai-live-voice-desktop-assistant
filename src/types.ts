@@ -46,8 +46,11 @@ export interface LiveConfig {
   showWatermark: boolean;
   countdownTimer: number;
   showWebcamOverlay: boolean;
+  webcamSize: number;
   language: string;
   isDeveloperMode: boolean;
+  isChatWindowOpen: boolean;
+  useLocalOllama: boolean;
   customApiKey?: string;
 }
 

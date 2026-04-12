@@ -106,7 +106,7 @@ ipcMain.handle('automation:click', async (event, { button, double }) => {
       $signature = '[DllImport(\"user32.dll\")] public static extern void mouse_event(int dwFlags, int dx, int dy, int cButtons, int dwExtraInfo);';
       $type = Add-Type -MemberDefinition $signature -Name \"Win32MouseEvent\" -Namespace \"Win32Functions\" -PassThru;
       $type::mouse_event(${clickCode}, 0, 0, 0, 0);
-      ${double ? `Start-Sleep -Milliseconds 100; $type::mouse_event(${clickCode}, 0, 0, 0, 0);` : ''}
+      ${double ? `Start-Sleep -Milliseconds 150; $type::mouse_event(${clickCode}, 0, 0, 0, 0);` : ''}
     `;
     await runPowerShell(script);
     return "ok";
@@ -169,15 +169,56 @@ ipcMain.handle('automation:get_screen_source', async () => {
 
 ipcMain.handle('automation:open_app', (event, { name }) => {
   console.log(`Automation: Opening app ${name}`);
-  // Try to open via start command (Windows)
+  const lowerName = name.toLowerCase();
+  
+  // Mapping for common Windows applications and their protocols/executables
+  const appMap = {
+    'chrome': 'chrome',
+    'google chrome': 'chrome',
+    'edge': 'msedge',
+    'microsoft edge': 'msedge',
+    'notepad': 'notepad',
+    'calculator': 'calc',
+    'paint': 'mspaint',
+    'cmd': 'cmd',
+    'powershell': 'powershell',
+    'task manager': 'taskmgr',
+    'control panel': 'control',
+    'settings': 'start ms-settings:',
+    'whatsapp': 'start whatsapp:',
+    'discord': 'start discord:',
+    'spotify': 'start spotify:',
+    'code': 'code',
+    'vs code': 'code',
+    'visual studio code': 'code',
+    'word': 'start winword',
+    'excel': 'start excel',
+    'powerpoint': 'start powerpnt',
+    'outlook': 'start outlook',
+    'vlc': 'vlc',
+    'steam': 'start steam://',
+    'explorer': 'explorer',
+    'file explorer': 'explorer'
+  };
+
+  // Check if it's in our map
+  for (const [key, value] of Object.entries(appMap)) {
+    if (lowerName.includes(key)) {
+      exec(value.startsWith('start ') ? value : `start "" "${value}"`, (err) => {
+        if (err) {
+          console.error(`Failed to open ${key} via map:`, err);
+          // Fallback to direct name
+          exec(`start "" "${name}"`);
+        }
+      });
+      return "ok";
+    }
+  }
+
+  // Final fallback: try to start the name directly
   exec(`start "" "${name}"`, (err) => {
     if (err) {
-      // Fallback for common apps if simple start fails
-      if (name.toLowerCase().includes('code') || name.toLowerCase().includes('vs code')) {
-        exec('code .');
-      } else if (name.toLowerCase().includes('whatsapp')) {
-        exec('start whatsapp:');
-      }
+      console.error(`Failed to open ${name} via direct start:`, err);
     }
   });
   return "ok";
