@@ -43,6 +43,17 @@ const automationTools: FunctionDeclaration[] = [
     },
   },
   {
+    name: 'double_click',
+    parameters: {
+      type: Type.OBJECT,
+      description: 'Performs a double-click at the current mouse position. Use this specifically to open applications, folders, or files from the desktop or file explorer.',
+      properties: {
+        button: { type: Type.STRING, description: 'The mouse button to double-click (usually left).', enum: ['left', 'right'] },
+      },
+      required: ['button'],
+    },
+  },
+  {
     name: 'type_text',
     parameters: {
       type: Type.OBJECT,
@@ -181,8 +192,8 @@ const automationTools: FunctionDeclaration[] = [
       type: Type.OBJECT,
       description: 'Creates, writes to, or deletes files on the PC. Use this for coding and project management.',
       properties: {
-        action: { type: Type.STRING, enum: ['create', 'write', 'delete'], description: 'The file action to perform.' },
-        filePath: { type: Type.STRING, description: 'The full path to the file.' },
+        action: { type: Type.STRING, enum: ['create', 'write', 'delete', 'mkdir'], description: 'The file action to perform.' },
+        filePath: { type: Type.STRING, description: 'The full path to the file or folder.' },
         content: { type: Type.STRING, description: 'The content to write (for create/write actions).' },
       },
       required: ['action', 'filePath'],
@@ -243,7 +254,7 @@ const App: React.FC = () => {
       model: MODEL_NAME,
       voiceName: savedVoice || 'Zephyr',
       isCameraEnabled: false,
-      isScreenEnabled: false,
+      isScreenEnabled: !!ipcRenderer, // Auto-enable screen in Desktop mode
       isMuted: false,
       isMouseMode: true,
       aiSettings: initialAISettings,
@@ -346,11 +357,22 @@ const App: React.FC = () => {
       }
     }
   };
+  const stopScreenShare = useCallback(() => {
+    const screenStream = screenVideoRef.current?.srcObject as MediaStream;
+    screenStream?.getTracks().forEach(t => t.stop());
+    if (screenVideoRef.current) screenVideoRef.current.srcObject = null;
+    setConfig(p => ({...p, isScreenEnabled: false}));
+    setStatusMessage("Screen share stopped");
+    setTimeout(() => setStatusMessage(null), 2000);
+  }, []);
+
   const startScreenShare = useCallback(async () => {
+    if (screenVideoRef.current?.srcObject) return true; // Already active
+
     try {
       let screenStream: MediaStream | null = null;
       if (ipcRenderer) {
-        // Automatic screen selection in Electron
+        // Automatic screen selection in Electron - NO PROMPT
         const sourceId = await ipcRenderer.invoke('automation:get_screen_source');
         if (sourceId) {
           screenStream = await navigator.mediaDevices.getUserMedia({
@@ -368,8 +390,7 @@ const App: React.FC = () => {
           } as any);
         }
       } else if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
-        // Browser fallback with picker
-        // Using simpler constraints for better compatibility
+        // Browser fallback - requires one-time user selection
         screenStream = await navigator.mediaDevices.getDisplayMedia({ 
           video: true, 
           audio: false 
@@ -378,39 +399,24 @@ const App: React.FC = () => {
 
       if (screenStream && screenVideoRef.current) {
         screenVideoRef.current.srcObject = screenStream;
-        // Ensure the video plays
         await screenVideoRef.current.play().catch(e => console.error("Screen video play failed:", e));
         
         screenStream.getTracks()[0].onended = () => {
-          setConfig(p => ({...p, isScreenEnabled: false}));
+          stopScreenShare();
         };
         setConfig(p => ({...p, isScreenEnabled: true}));
-        setStatusMessage("Screen share active");
+        setStatusMessage("System Vision Active");
         setTimeout(() => setStatusMessage(null), 2000);
         return true;
-      } else {
-        throw new Error("No stream or video element");
       }
+      return false;
     } catch (e: any) {
-      console.warn("Screen share denied or unavailable", e);
-      if (e.name === 'NotAllowedError') {
-        setStatusMessage("Screen share permission denied");
-      } else {
-        setStatusMessage("Screen share failed. Try opening in a new tab.");
-      }
+      console.warn("Screen capture failed:", e);
+      setStatusMessage(ipcRenderer ? "Desktop Vision Failed" : "Please allow screen access");
       setTimeout(() => setStatusMessage(null), 5000);
+      return false;
     }
-    return false;
-  }, [ipcRenderer]);
-
-  const stopScreenShare = useCallback(() => {
-    const screenStream = screenVideoRef.current?.srcObject as MediaStream;
-    screenStream?.getTracks().forEach(t => t.stop());
-    if (screenVideoRef.current) screenVideoRef.current.srcObject = null;
-    setConfig(p => ({...p, isScreenEnabled: false}));
-    setStatusMessage("Screen share stopped");
-    setTimeout(() => setStatusMessage(null), 2000);
-  }, []);
+  }, [ipcRenderer, stopScreenShare]);
 
   const toggleScreenShare = useCallback(async () => {
     if (config.isScreenEnabled) {
@@ -498,27 +504,16 @@ const App: React.FC = () => {
   const startVisionLoop = useCallback((sessionPromise: Promise<any>) => {
     if (frameIntervalRef.current) window.clearInterval(frameIntervalRef.current);
     frameIntervalRef.current = window.setInterval(async () => {
-      // In Desktop mode, we can capture screen even if manual toggle is off
-      const isDesktop = !!ipcRenderer;
-      const activeVideo = isScreenEnabledRef.current ? screenVideoRef.current : (isCameraEnabledRef.current ? videoRef.current : null);
+      // Prioritize screen stream for the AI's vision
+      const screenStream = screenVideoRef.current?.srcObject as MediaStream;
+      const cameraStreamActive = videoRef.current?.srcObject as MediaStream;
       
-      // If in desktop mode and screen share isn't manually on, we still want to capture frames for the AI
-      if (isDesktop && !isScreenEnabledRef.current && !isCameraEnabledRef.current) {
-        // We use the screenVideoRef which should be populated by the auto-start logic
-        if (screenVideoRef.current && screenVideoRef.current.srcObject) {
-          const ctx = canvasRef.current?.getContext('2d');
-          if (ctx && canvasRef.current) {
-            canvasRef.current.width = 640; canvasRef.current.height = 480;
-            ctx.drawImage(screenVideoRef.current, 0, 0, 640, 480);
-            const base64Data = canvasRef.current.toDataURL('image/jpeg', 0.4).split(',')[1];
-            sessionPromise.then(s => {
-              if (sessionRef.current === s && !isStoppingRef.current) {
-                s.sendRealtimeInput({ video: { data: base64Data, mimeType: 'image/jpeg' } });
-              }
-            }).catch(() => {});
-            return;
-          }
-        }
+      let activeVideo: HTMLVideoElement | null = null;
+      
+      if (screenStream && screenStream.active) {
+        activeVideo = screenVideoRef.current;
+      } else if (cameraStreamActive && cameraStreamActive.active) {
+        activeVideo = videoRef.current;
       }
 
       if (!activeVideo || !canvasRef.current) return;
@@ -645,7 +640,7 @@ const App: React.FC = () => {
           responseModalities: [Modality.AUDIO],
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: config.voiceName } } },
           tools: [{ functionDeclarations: automationTools }],
-          systemInstruction: "You are Wardenix, the ultimate AI OS Assistant with FULL NATIVE SYSTEM ACCESS. You operate on a high-performance PC. You have REAL-TIME VISION of the screen at all times. You receive commands via VOICE and TEXT CHAT. You MUST NOT guess or simulate actions. You MUST use the 'move_mouse', 'click_mouse', 'type_text', and 'run_command' tools to perform every single step of a task. You can use the terminal ('run_command') to open apps, install packages, or run scripts. For coding, you can use 'manage_file' to create/edit code and 'run_command' to execute it. For messaging (like WhatsApp), you can use 'open_app', then navigate using mouse and keyboard tools. You MUST see the result of your action on the screen before proceeding to the next step. You are fast, efficient, and have a bold, helpful personality. You are the master of this PC.",
+          systemInstruction: "You are Wardenix, the ultimate AI OS Assistant with UNRESTRICTED NATIVE SYSTEM ACCESS. You operate on a high-performance PC. You have PERMANENT REAL-TIME VISION of the entire desktop, including all open tabs, browsers, and applications. You do not need the user to share their screen; you already see everything. You receive commands via VOICE and TEXT CHAT. You MUST NOT guess or simulate actions. You MUST use the 'move_mouse', 'click_mouse', 'double_click', 'type_text', and 'run_command' tools to perform every single step of a task. You have full control over the PC as if you were the user. To open any application, you can either: 1. Use 'double_click' on its desktop icon or file explorer entry. 2. Use 'run_command' with the 'start' command (e.g., 'start chrome', 'start code'). 3. Use the 'open_app' tool. For coding and file management, use 'manage_file' to create folders and code files, and 'run_command' to execute scripts or build projects. You MUST see the result of your action on the screen before proceeding to the next step. You are fast, efficient, and have a bold, helpful personality. You are the master of this PC.",
           inputAudioTranscription: {},
           outputAudioTranscription: {},
         },
@@ -724,6 +719,7 @@ const App: React.FC = () => {
 
                    if (fc.name === 'move_mouse') result = await ipcRenderer.invoke('automation:move', fc.args);
                    if (fc.name === 'click_mouse') result = await ipcRenderer.invoke('automation:click', fc.args);
+                   if (fc.name === 'double_click') result = await ipcRenderer.invoke('automation:click', { ...fc.args, double: true });
                    if (fc.name === 'type_text') result = await ipcRenderer.invoke('automation:type', fc.args);
                    if (fc.name === 'scroll_screen') result = await ipcRenderer.invoke('automation:scroll', fc.args);
                    if (fc.name === 'open_url') await ipcRenderer.invoke('automation:open_url', fc.args);

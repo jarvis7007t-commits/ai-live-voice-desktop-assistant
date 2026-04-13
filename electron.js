@@ -310,6 +310,8 @@ ipcMain.handle('automation:manage_file', (event, { action, filePath, content }) 
       const dir = path.dirname(filePath);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(filePath, content || '');
+    } else if (action === 'mkdir') {
+      if (!fs.existsSync(filePath)) fs.mkdirSync(filePath, { recursive: true });
     } else if (action === 'delete') {
       if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
     }
