@@ -1,14 +1,10 @@
 google-genai
-ollama
-flask
-flask-cors
-python-dotenv
-requests
 PyQt6
 pyautogui
 opencv-python
 pyaudio
 screen-brightness-control
 pycaw
+python-dotenv
 keyboard
 pyinstaller

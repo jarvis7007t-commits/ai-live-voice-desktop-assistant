@@ -1,8 +1,10 @@
 
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import { GoogleGenAI, Modality, LiveServerMessage, Type, FunctionDeclaration } from '@google/genai';
 import { motion, AnimatePresence } from 'motion/react';
 import { Mic, MicOff, Video, VideoOff, Settings, Globe, PhoneOff, MousePointer2 } from 'lucide-react';
 import { SessionStatus, LiveConfig, UserProfile, AISetting, TranscriptionEntry } from './types';
+import { createBlob, decode, decodeAudioData } from './utils/audio-utils';
 import Visualizer from './components/Visualizer';
 import SettingsModal from './components/SettingsModal';
 import AuthModal from './components/AuthModal';
@@ -11,11 +13,188 @@ import ChatWindow from './components/ChatWindow';
 const isElectron = typeof window !== 'undefined' && (window as any).process && (window as any).process.type;
 const ipcRenderer = isElectron ? (window as any).require('electron').ipcRenderer : null;
 
-const MODEL_NAME = 'qwen3.5:9b';
+const MODEL_NAME = 'gemini-3.1-flash-live-preview';
 const FRAME_RATE = 2; 
 
-// --- MAIN ASSISTANT LOGIC ---
-export const App: React.FC = () => {
+// --- Digital Mouse Tool Declarations ---
+const automationTools: FunctionDeclaration[] = [
+  {
+    name: 'move_mouse',
+    parameters: {
+      type: Type.OBJECT,
+      description: 'Moves the system mouse cursor to specific coordinates. Use this to hover over icons, buttons, or menu items before clicking.',
+      properties: {
+        x: { type: Type.NUMBER, description: 'Horizontal pixel coordinate (0 to screen width).' },
+        y: { type: Type.NUMBER, description: 'Vertical pixel coordinate (0 to screen height).' },
+      },
+      required: ['x', 'y'],
+    },
+  },
+  {
+    name: 'click_mouse',
+    parameters: {
+      type: Type.OBJECT,
+      description: 'Performs a mouse click at the current position. Set double to true to open applications or files.',
+      properties: {
+        button: { type: Type.STRING, description: 'left or right', enum: ['left', 'right'] },
+        double: { type: Type.BOOLEAN, description: 'Set to true for double-clicking to open apps/folders.' },
+      },
+      required: ['button'],
+    },
+  },
+  {
+    name: 'type_text',
+    parameters: {
+      type: Type.OBJECT,
+      description: 'Types a string of text into the currently focused field.',
+      properties: {
+        text: { type: Type.STRING, description: 'The text to type.' },
+      },
+      required: ['text'],
+    },
+  },
+  {
+    name: 'scroll_screen',
+    parameters: {
+      type: Type.OBJECT,
+      description: 'Scrolls the screen up or down.',
+      properties: {
+        direction: { type: Type.STRING, enum: ['up', 'down'] },
+        amount: { type: Type.NUMBER, description: 'Pixels to scroll.' },
+      },
+      required: ['direction', 'amount'],
+    },
+  },
+  {
+    name: 'open_url',
+    parameters: {
+      type: Type.OBJECT,
+      description: 'Opens a specific URL in the default web browser.',
+      properties: {
+        url: { type: Type.STRING, description: 'The URL to open (e.g., https://google.com).' },
+      },
+      required: ['url'],
+    },
+  },
+  {
+    name: 'system_power',
+    parameters: {
+      type: Type.OBJECT,
+      description: 'Controls the system power state (shutdown or restart).',
+      properties: {
+        action: { type: Type.STRING, enum: ['shutdown', 'restart'], description: 'The power action to perform.' },
+      },
+      required: ['action'],
+    },
+  },
+  {
+    name: 'open_app',
+    parameters: {
+      type: Type.OBJECT,
+      description: 'Opens a specific application on the PC (e.g., VS Code, WhatsApp, Chrome).',
+      properties: {
+        name: { type: Type.STRING, description: 'The name or path of the application to open.' },
+      },
+      required: ['name'],
+    },
+  },
+  {
+    name: 'press_key',
+    parameters: {
+      type: Type.OBJECT,
+      description: 'Presses a special key (e.g., enter, tab, esc, backspace).',
+      properties: {
+        key: { type: Type.STRING, description: 'The key to press (e.g., enter, tab, escape, backspace, up, down, left, right).' },
+      },
+      required: ['key'],
+    },
+  },
+  {
+    name: 'set_volume',
+    parameters: {
+      type: Type.OBJECT,
+      description: 'Sets the system volume level.',
+      properties: {
+        level: { type: Type.NUMBER, description: 'Volume level from 0 to 100.' },
+      },
+      required: ['level'],
+    },
+  },
+  {
+    name: 'set_brightness',
+    parameters: {
+      type: Type.OBJECT,
+      description: 'Sets the screen brightness level.',
+      properties: {
+        level: { type: Type.NUMBER, description: 'Brightness level from 0 to 100.' },
+      },
+      required: ['level'],
+    },
+  },
+  {
+    name: 'toggle_wifi',
+    parameters: {
+      type: Type.OBJECT,
+      description: 'Enables or disables WiFi.',
+      properties: {
+        enabled: { type: Type.BOOLEAN, description: 'True to enable, False to disable.' },
+      },
+      required: ['enabled'],
+    },
+  },
+  {
+    name: 'toggle_bluetooth',
+    parameters: {
+      type: Type.OBJECT,
+      description: 'Enables or disables Bluetooth.',
+      properties: {
+        enabled: { type: Type.BOOLEAN, description: 'True to enable, False to disable.' },
+      },
+      required: ['enabled'],
+    },
+  },
+  {
+    name: 'toggle_camera',
+    parameters: {
+      type: Type.OBJECT,
+      description: 'Enables or disables the system camera.',
+      properties: {
+        enabled: { type: Type.BOOLEAN, description: 'True to enable, False to disable.' },
+      },
+      required: ['enabled'],
+    },
+  },
+  {
+    name: 'toggle_microphone',
+    parameters: {
+      type: Type.OBJECT,
+      description: 'Mutes or unmutes the system microphone.',
+      properties: {
+        enabled: { type: Type.BOOLEAN, description: 'True to unmute, False to mute.' },
+      },
+      required: ['enabled'],
+    },
+  },
+  {
+    name: 'manage_file',
+    parameters: {
+      type: Type.OBJECT,
+      description: 'Creates, writes to, or deletes files on the PC. Use this for coding and project management.',
+      properties: {
+        action: { type: Type.STRING, enum: ['create', 'write', 'delete'], description: 'The file action to perform.' },
+        filePath: { type: Type.STRING, description: 'The full path to the file.' },
+        content: { type: Type.STRING, description: 'The content to write (for create/write actions).' },
+      },
+      required: ['action', 'filePath'],
+    },
+  }
+];
+
+const App: React.FC = () => {
+  const queryParams = new URLSearchParams(window.location.search);
+  const isCameraView = queryParams.get('view') === 'camera';
+  
+  // --- MAIN ASSISTANT LOGIC ---
   const [status, setStatus] = useState<SessionStatus>(SessionStatus.IDLE);
   const [user, setUser] = useState<UserProfile>({
     email: '',
@@ -25,17 +204,16 @@ export const App: React.FC = () => {
 
   const initialAISettings: AISetting[] = [
     { 
-      id: 'ollama', 
-      name: 'Wardenix (Local Ollama)', 
-      description: 'Local high-performance model running on your hardware.', 
+      id: 'gemini', 
+      name: 'Gemini AI (Free Tier)', 
+      description: 'Google\'s high-speed models from AI Studio Free Tier.', 
       enabled: true, 
       icon: 'sparkles',
       versions: [
-        { id: 'qwen3.5:9b', name: 'Qwen 3.5 9B' },
-        { id: 'qwen3.5:2b', name: 'Qwen 3.5 2B' },
-        { id: 'llama3', name: 'Llama 3' }
+        { id: MODEL_NAME, name: 'Gemini 3.1 Flash Live' },
+        { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash' }
       ],
-      selectedVersion: 'qwen3.5:9b'
+      selectedVersion: MODEL_NAME
     },
     { id: 'coding', name: 'Coding Module', description: 'Advanced full-stack development, debugging, and architecture.', enabled: true, icon: 'code' },
     { id: 'education', name: 'Education Module', description: 'Personalized learning, tutoring, and academic research.', enabled: true, icon: 'brain' },
@@ -74,13 +252,11 @@ export const App: React.FC = () => {
       language: 'EN',
       isDeveloperMode: savedDevMode,
       isChatWindowOpen: false,
-      useLocalOllama: localStorage.getItem('wardenix_use_ollama') !== 'false',
       customApiKey: savedKey || undefined
     };
   });
 
   useEffect(() => {
-    localStorage.setItem('wardenix_use_ollama', String(config.useLocalOllama));
     if (config.customApiKey) {
       localStorage.setItem('wardenix_api_key', config.customApiKey);
     } else {
@@ -164,43 +340,7 @@ export const App: React.FC = () => {
   
   const [isUserTalking, setIsUserTalking] = useState(false);
   const [isModelTalking, setIsModelTalking] = useState(false);
-  const isFirstInteractionRef = useRef(true);
-  const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const lastTranscriptRef = useRef("");
-  const vadAudioContextRef = useRef<AudioContext | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const isListeningActiveRef = useRef(false);
-  const volumeThreshold = 0.15; // Increased threshold to avoid noise
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
-
-  // Backend health check with retries
-  useEffect(() => {
-    let retries = 0;
-    const maxRetries = 5;
-    
-    const checkBackend = async () => {
-      try {
-        const response = await fetch('/health');
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const data = await response.json();
-        console.log("[Wardenix] Backend Health:", data);
-        setStatusMessage(""); // Clear any previous connection errors
-      } catch (error) {
-        console.warn(`[Wardenix] Backend check failed (attempt ${retries + 1}/${maxRetries}):`, error);
-        if (retries < maxRetries) {
-          retries++;
-          setTimeout(checkBackend, 2000);
-        } else {
-          console.error("[Wardenix] Backend unreachable after multiple attempts.");
-          setStatusMessage("Backend connection failed");
-        }
-      }
-    };
-    
-    // Start checking after a short delay
-    const timer = setTimeout(checkBackend, 1000);
-    return () => clearTimeout(timer);
-  }, []);
   const [isCameraHardwareMissing, setIsCameraHardwareMissing] = useState(false);
   const [isAutomationAuthorized, setIsAutomationAuthorized] = useState(false);
   const [pendingAction, setPendingAction] = useState<{name: string, args: any, id: string} | null>(null);
@@ -213,9 +353,6 @@ export const App: React.FC = () => {
     localStorage.setItem('wardenix_history', JSON.stringify(transcriptions.slice(-50)));
   }, [transcriptions]);
   
-  const statusRef = useRef(status);
-  useEffect(() => { statusRef.current = status; }, [status]);
-
   const isMutedRef = useRef(config.isMuted);
   const isCameraEnabledRef = useRef(config.isCameraEnabled);
   const isScreenEnabledRef = useRef(config.isScreenEnabled);
@@ -241,20 +378,37 @@ export const App: React.FC = () => {
     }
   }, [isSettingsOpen, isAuthOpen, ipcRenderer]);
 
-  const stopSession = () => {
+  const stopSession = useCallback(() => {
     playSound('stop');
+    isStoppingRef.current = true;
     if (ipcRenderer) ipcRenderer.send('resize-window', false);
+    if (frameIntervalRef.current) window.clearInterval(frameIntervalRef.current);
+    if (sessionRef.current) {
+      try {
+        sessionRef.current.close?.();
+      } catch (e) {}
+    }
+    sessionRef.current = null;
+    if (audioNodesRef.current?.processor) audioNodesRef.current.processor.disconnect();
+    if (audioNodesRef.current?.source) audioNodesRef.current.source.disconnect();
+    audioSourcesRef.current.forEach(s => { try { s.stop(); } catch(e) {} });
+    audioSourcesRef.current.clear();
     
-    if ((window as any).recognition) {
-      (window as any).recognition.stop();
-      (window as any).recognition = null;
+    // Only stop the videoRef stream if it's not the persistent cameraStream
+    const camStream = videoRef.current?.srcObject as MediaStream;
+    if (camStream && camStream !== cameraStream) {
+      camStream.getTracks().forEach(t => t.stop());
     }
     
-    window.speechSynthesis.cancel();
+    const screenStream = screenVideoRef.current?.srcObject as MediaStream;
+    screenStream?.getTracks().forEach(t => t.stop());
     setStatus(SessionStatus.IDLE);
     setIsUserTalking(false);
     setIsModelTalking(false);
-  };
+    setConfig(c => ({...c, isCameraEnabled: false, isScreenEnabled: false}));
+    setIsAutomationAuthorized(false);
+    setTimeout(() => { isStoppingRef.current = false; }, 500);
+  }, [ipcRenderer, cameraStream]);
 
   const startVisionLoop = useCallback((sessionPromise: Promise<any>) => {
     if (frameIntervalRef.current) window.clearInterval(frameIntervalRef.current);
@@ -333,186 +487,278 @@ export const App: React.FC = () => {
       if (ipcRenderer) ipcRenderer.send('resize-window', true);
       setStatus(SessionStatus.CONNECTING);
       
-      // Initialize AudioContext for volume-based VAD
-      if (!vadAudioContextRef.current) {
-        vadAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const source = vadAudioContextRef.current.createMediaStreamSource(stream);
-        analyserRef.current = vadAudioContextRef.current.createAnalyser();
-        analyserRef.current.fftSize = 256;
-        source.connect(analyserRef.current);
-      }
-
-      const checkVolume = () => {
-        if (!analyserRef.current || statusRef.current !== SessionStatus.CONNECTED) return;
-        const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
-        analyserRef.current.getByteFrequencyData(dataArray);
-        const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
-        const volume = average / 255;
-        
-        // Only process audio if listening is active (after startup delay)
-        if (isListeningActiveRef.current) {
-          if (volume > volumeThreshold) {
-            if (!isUserTalking) setIsUserTalking(true);
-            if (silenceTimerRef.current) {
-              clearTimeout(silenceTimerRef.current);
-              silenceTimerRef.current = null;
-            }
-          } else {
-            if (isUserTalking && !silenceTimerRef.current) {
-              silenceTimerRef.current = setTimeout(() => {
-                setIsUserTalking(false);
-                silenceTimerRef.current = null;
-              }, 2000); // 2s silence threshold for more stability
-            }
-          }
-        }
-        requestAnimationFrame(checkVolume);
-      };
-      checkVolume();
-
-      // Startup delay: Ignore all input for the first 2.5 seconds
-      isListeningActiveRef.current = false;
-      setTimeout(() => {
-        isListeningActiveRef.current = true;
-        console.log("[Wardenix] Listening active after startup delay");
-      }, 2500);
-
-      // Initialize Speech Recognition for Voice Input
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (!SpeechRecognition) {
-        setStatusMessage("Speech recognition not supported");
+      const apiKey = config.customApiKey || process.env.GEMINI_API_KEY || process.env.API_KEY;
+      if (!apiKey) {
+        setStatusMessage("API Key missing");
         setStatus(SessionStatus.IDLE);
         return;
       }
 
-      const recognition = new SpeechRecognition();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = config.language === 'HI' ? 'hi-IN' : 'en-US';
+      const ai = new GoogleGenAI({ apiKey });
+      if (!audioContextRef.current) {
+        audioContextRef.current = {
+          input: new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 }),
+          output: new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 }),
+        };
+      }
+      const { input: inputCtx, output: outputCtx } = audioContextRef.current;
+      await inputCtx.resume(); await outputCtx.resume();
 
-      recognition.onstart = () => {
-        setStatus(SessionStatus.CONNECTED);
-        setStatusMessage("Wardenix Online (Ollama)");
-        setTimeout(() => setStatusMessage(null), 3000);
-      };
-
-      recognition.onresult = async (event: any) => {
-        if (!isListeningActiveRef.current) return; // Ignore input during startup delay
-
-        const lastResult = event.results[event.results.length - 1];
-        const transcript = lastResult[0].transcript.trim();
-        const confidence = lastResult[0].confidence;
-        
-        if (lastResult.isFinal) {
-          console.log("User said:", transcript, "Confidence:", confidence);
-          
-          // Stricter VAD & Noise Filtering:
-          // 1. Minimum 3 characters for a meaningful command (e.g., "Hi", "Run")
-          // 2. Confidence threshold (0.65)
-          // 3. Ignore duplicates
-          if (transcript.length < 3 || confidence < 0.65 || transcript === lastTranscriptRef.current) {
-            console.log("Ignoring noise/short/low-confidence/duplicate transcript");
-            return;
-          }
-
-          lastTranscriptRef.current = transcript;
-          isFirstInteractionRef.current = false; // User has spoken
-
-          // Add user message to history
-          const userMsg: TranscriptionEntry = { role: 'user', text: transcript };
-          setTranscriptions(prev => [...prev, userMsg]);
-
-          try {
-            setIsModelTalking(true);
-            const response = await fetch('/ask', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ 
-                query: transcript, 
-                useLocalOllama: config.useLocalOllama,
-                model: config.model,
-                apiKey: config.customApiKey,
-                isFirstInteraction: isFirstInteractionRef.current,
-                history: transcriptions.map(t => ({ role: t.role === 'user' ? 'user' : 'assistant', content: t.text }))
-              })
-            });
-            
-            if (!response.body) throw new Error("No response body");
-            
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let fullText = '';
-            
-            // Add initial empty model message
-            setTranscriptions(prev => [...prev, { role: 'model', text: '' }]);
-
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              
-              const chunk = decoder.decode(value, { stream: true });
-              fullText += chunk;
-              
-              // Update the last message in history with the streaming text
-              setTranscriptions(prev => {
-                const next = [...prev];
-                if (next.length > 0) {
-                  next[next.length - 1].text = fullText;
+      let screenStream: MediaStream | null = null;
+      if (config.isScreenEnabled) {
+        try {
+          if (ipcRenderer) {
+            // Automatic screen selection in Electron
+            const sourceId = await ipcRenderer.invoke('automation:get_screen_source');
+            if (sourceId) {
+              screenStream = await navigator.mediaDevices.getUserMedia({
+                audio: false,
+                video: {
+                  mandatory: {
+                    chromeMediaSource: 'desktop',
+                    chromeMediaSourceId: sourceId,
+                    minWidth: 1280,
+                    maxWidth: 1920,
+                    minHeight: 720,
+                    maxHeight: 1080
+                  }
                 }
-                return next;
-              });
+              } as any);
             }
-            
-            // Speak the final response if not empty
-            if (fullText.trim()) {
-              window.speechSynthesis.cancel(); // Clear any pending speech
-              const utterance = new SpeechSynthesisUtterance(fullText);
-              utterance.onend = () => setIsModelTalking(false);
-              window.speechSynthesis.speak(utterance);
-            } else {
-              console.warn("Empty response from backend, nothing to speak.");
-              setIsModelTalking(false);
-            }
-            
-          } catch (e) {
-            console.error("Backend error:", e);
-            setStatusMessage("Backend connection failed");
-            setIsModelTalking(false);
+          } else if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
+            // Browser fallback with picker
+            screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: "always" } as any, audio: false });
           }
-        } else {
-          setIsUserTalking(true);
-          // Reset silence timer when user starts talking
-          if (silenceTimerRef.current) {
-            clearTimeout(silenceTimerRef.current);
-            silenceTimerRef.current = null;
-          }
-        }
-      };
 
-      recognition.onerror = (event: any) => {
-        console.error("Recognition error:", event.error);
-        setStatusMessage(`Mic error: ${event.error}`);
+          if (screenStream && screenVideoRef.current) {
+            screenVideoRef.current.srcObject = screenStream;
+            screenVideoRef.current.onloadedmetadata = () => screenVideoRef.current.play();
+            screenStream.getTracks()[0].onended = () => setConfig(p => ({...p, isScreenEnabled: false}));
+            setConfig(p => ({...p, isScreenEnabled: true}));
+          }
+        } catch (e) {
+          console.warn("Screen share denied or unavailable", e);
+          setConfig(p => ({...p, isScreenEnabled: false}));
+          setStatusMessage("Voice-only mode (Screen denied)");
+          setTimeout(() => setStatusMessage(null), 3000);
+        }
+      }
+
+      // Proactive check for microphone
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const hasMic = devices.some(device => device.kind === 'audioinput');
+      
+      if (!hasMic) {
+        setStatusMessage("No microphone detected");
         setStatus(SessionStatus.IDLE);
-      };
+        setTimeout(() => setStatusMessage(null), 3000);
+        return;
+      }
 
-      recognition.onend = () => {
-        if (status === SessionStatus.CONNECTED) {
+      const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      
+      let camStream: MediaStream | null = null;
+      if (config.isCameraEnabled) {
+        if (cameraStream) {
+          camStream = cameraStream;
+        } else {
           try {
-            recognition.start(); // Keep listening
+            camStream = await navigator.mediaDevices.getUserMedia({ 
+              video: { width: 640, height: 480 } 
+            });
+            setCameraStream(camStream);
           } catch (e) {
-            console.error("Recognition restart failed:", e);
+            console.error("Failed to get camera for session:", e);
           }
         }
-      };
+        if (camStream && videoRef.current) {
+          videoRef.current.srcObject = camStream;
+          videoRef.current.play();
+        }
+      }
+      // Ensure we use a Gemini Live compatible model
+      let liveModel = config.model;
+      if (!liveModel.startsWith('gemini-')) {
+        liveModel = MODEL_NAME;
+        setStatusMessage("Using Gemini for Live Mode");
+        setTimeout(() => setStatusMessage(null), 3000);
+      } else if (liveModel.includes('pro')) {
+        // Pro models don't support Live API yet, fallback to Flash Live
+        liveModel = MODEL_NAME;
+        setStatusMessage("Live Mode requires Flash model");
+        setTimeout(() => setStatusMessage(null), 3000);
+      }
 
-      (window as any).recognition = recognition;
-      recognition.start();
+      const sessionPromise = ai.live.connect({
+        model: liveModel,
+        config: {
+          responseModalities: [Modality.AUDIO],
+          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: config.voiceName } } },
+          tools: [{ functionDeclarations: automationTools }],
+          systemInstruction: "You are Wardenix, the ultimate AI OS Assistant with FULL NATIVE SYSTEM ACCESS. You operate on a high-performance PC. You have REAL-TIME VISION of the screen at all times. You receive commands via VOICE and TEXT CHAT. You MUST NOT guess or simulate actions. You MUST use the 'move_mouse', 'click_mouse', and 'type_text' tools to perform every single step of a task. For example, to play a video on YouTube: 1. Open Chrome. 2. Move mouse to the search bar. 3. Click. 4. Type the song name. 5. Press Enter. 6. Move mouse to the first video. 7. Click. You MUST see the result of your action on the screen before proceeding to the next step. You are fast, efficient, and have a bold, helpful personality. You are the master of this PC.",
+          inputAudioTranscription: {},
+          outputAudioTranscription: {},
+        },
+        callbacks: {
+          onopen: () => {
+            sessionPromise.then(async (s) => { 
+              sessionRef.current = s; 
+              // Auto-initialize screen capture in background for Desktop mode
+              if (ipcRenderer) {
+                try {
+                  const sourceId = await ipcRenderer.invoke('automation:get_screen_source');
+                  if (sourceId) {
+                    const screenStream = await navigator.mediaDevices.getUserMedia({
+                      audio: false,
+                      video: {
+                        mandatory: {
+                          chromeMediaSource: 'desktop',
+                          chromeMediaSourceId: sourceId,
+                          minWidth: 1280,
+                          maxWidth: 1920,
+                          minHeight: 720,
+                          maxHeight: 1080
+                        }
+                      }
+                    } as any);
+                    if (screenVideoRef.current) {
+                      screenVideoRef.current.srcObject = screenStream;
+                      screenVideoRef.current.play();
+                    }
+                  }
+                } catch (e) {
+                  console.error("Auto-screen capture failed:", e);
+                }
+              }
+            });
+            setStatus(SessionStatus.CONNECTED);
+            const source = inputCtx.createMediaStreamSource(audioStream);
+            const scriptProcessor = inputCtx.createScriptProcessor(4096, 1, 1);
+            scriptProcessor.onaudioprocess = (e) => {
+              if (isMutedRef.current || isStoppingRef.current) return;
+              const inputData = e.inputBuffer.getChannelData(0);
+              const sum = inputData.reduce((a, b) => a + Math.abs(b), 0);
+              setIsUserTalking(sum / inputData.length > 0.01);
+              sessionPromise.then(s => {
+                if (sessionRef.current === s && !isStoppingRef.current) {
+                  s.sendRealtimeInput({ audio: createBlob(inputData) });
+                }
+              }).catch(() => {});
+            };
+            source.connect(scriptProcessor);
+            scriptProcessor.connect(inputCtx.destination);
+            audioNodesRef.current = { source, processor: scriptProcessor };
+            startVisionLoop(sessionPromise);
+          },
+          onmessage: async (message: any) => {
+            // 1. Handle Interruption
+            if (message.serverContent?.interrupted) {
+              audioSourcesRef.current.forEach(s => { try { s.stop(); } catch(e) {} });
+              audioSourcesRef.current.clear();
+              setIsModelTalking(false);
+              return;
+            }
 
-    } catch (err: any) {
-      console.error("Failed to start session:", err);
-      setStatusMessage("Connection failed");
+            // 2. Handle Tool Calls
+            if (message.toolCall) {
+              for (const fc of message.toolCall.functionCalls) {
+                let result: any = "ok";
+                if (ipcRenderer) {
+                   // Security: Confirmation for dangerous actions
+                   const dangerousActions = ['system_power', 'manage_file'];
+                   if (dangerousActions.includes(fc.name) && !pendingAction) {
+                     setPendingAction(fc);
+                     setStatusMessage(`Confirm Action: ${fc.name.replace('_', ' ')}?`);
+                     continue;
+                   }
+
+                   if (fc.name === 'move_mouse') result = await ipcRenderer.invoke('automation:move', fc.args);
+                   if (fc.name === 'click_mouse') result = await ipcRenderer.invoke('automation:click', fc.args);
+                   if (fc.name === 'type_text') result = await ipcRenderer.invoke('automation:type', fc.args);
+                   if (fc.name === 'scroll_screen') result = await ipcRenderer.invoke('automation:scroll', fc.args);
+                   if (fc.name === 'open_url') await ipcRenderer.invoke('automation:open_url', fc.args);
+                   if (fc.name === 'system_power') await ipcRenderer.invoke('automation:system_power', fc.args);
+                   if (fc.name === 'open_app') await ipcRenderer.invoke('automation:open_app', fc.args);
+                   if (fc.name === 'press_key') await ipcRenderer.invoke('automation:press_key', fc.args);
+                   if (fc.name === 'manage_file') await ipcRenderer.invoke('automation:manage_file', fc.args);
+                   if (fc.name === 'set_volume') await ipcRenderer.invoke('automation:set_volume', fc.args);
+                   if (fc.name === 'set_brightness') await ipcRenderer.invoke('automation:set_brightness', fc.args);
+                   if (fc.name === 'toggle_wifi') await ipcRenderer.invoke('automation:toggle_wifi', fc.args);
+                   if (fc.name === 'toggle_bluetooth') await ipcRenderer.invoke('automation:toggle_bluetooth', fc.args);
+                   if (fc.name === 'toggle_camera') {
+                     if (fc.args.enabled !== isCameraPreviewOpen) toggleCameraPreview();
+                     result = "ok";
+                   }
+                   if (fc.name === 'toggle_microphone') {
+                     setConfig(p => ({...p, isMuted: !fc.args.enabled}));
+                     result = "ok";
+                   }
+                   
+                   setStatusMessage(`AI Action: ${fc.name.replace('_', ' ')}`);
+                   setTimeout(() => setStatusMessage(null), 2000);
+                } else {
+                   console.log("AI requested tool call (browser mode - no-op):", fc.name, fc.args);
+                   setStatusMessage(`⚠️ Automation requires Desktop App (Browser restricted)`);
+                   setTimeout(() => setStatusMessage(null), 4000);
+                }
+                
+                sessionPromise.then(s => s.sendToolResponse({
+                  functionResponses: [{ id: fc.id, name: fc.name, response: { result: result } }]
+                })).catch(err => console.error("Tool response error:", err));
+              }
+            }
+
+            // 3. Handle Audio Output & Transcriptions
+            const modelTurn = message.serverContent?.modelTurn;
+            if (modelTurn?.parts) {
+              const audioPart = modelTurn.parts.find(p => p.inlineData?.data);
+              if (audioPart?.inlineData?.data) {
+                setIsModelTalking(true);
+                nextStartTimeRef.current = Math.max(nextStartTimeRef.current, outputCtx.currentTime);
+                const audioBuffer = await decodeAudioData(decode(audioPart.inlineData.data), outputCtx, 24000, 1);
+                const source = outputCtx.createBufferSource();
+                source.buffer = audioBuffer;
+                source.connect(outputCtx.destination);
+                source.addEventListener('ended', () => {
+                  audioSourcesRef.current.delete(source);
+                  if (audioSourcesRef.current.size === 0) setIsModelTalking(false);
+                });
+                source.start(nextStartTimeRef.current);
+                nextStartTimeRef.current += audioBuffer.duration;
+                audioSourcesRef.current.add(source);
+              }
+
+              const text = modelTurn.parts.map(p => p.text).filter(Boolean).join('');
+              if (text) {
+                setTranscriptions(prev => [...prev.slice(-10), { role: 'model', text }]);
+              }
+            }
+
+            const userTurn = message.serverContent?.userTurn;
+            if (userTurn?.parts) {
+              const text = userTurn.parts.map(p => p.text).filter(Boolean).join('');
+              if (text) {
+                setTranscriptions(prev => [...prev.slice(-10), { role: 'user', text }]);
+              }
+            }
+          },
+          onerror: (err: any) => {
+            if (isStoppingRef.current || err?.message?.includes('aborted')) {
+              console.log("Live API connection closed (expected or aborted)");
+            } else {
+              console.error("Live API Error:", err);
+            }
+            stopSession();
+          },
+          onclose: () => stopSession(),
+        },
+      });
+      sessionRef.current = await sessionPromise;
+    } catch (err: any) { 
+      console.error("Session start error:", err);
       setStatus(SessionStatus.IDLE);
+      setStatusMessage("Connection failed");
+      setTimeout(() => setStatusMessage(null), 3000);
     }
   };
 
@@ -680,9 +926,11 @@ export const App: React.FC = () => {
         }}
         isConnected={isConnected}
         onSendMessage={(text) => {
-          // This was for the Gemini Live session, we can repurpose it or leave as is
-          setStatusMessage(`Command sent: "${text.substring(0, 20)}${text.length > 20 ? '...' : ''}"`);
-          setTimeout(() => setStatusMessage(null), 2000);
+          if (sessionRef.current) {
+            sessionRef.current.sendRealtimeInput({ text });
+            setStatusMessage(`Command sent: "${text.substring(0, 20)}${text.length > 20 ? '...' : ''}"`);
+            setTimeout(() => setStatusMessage(null), 2000);
+          }
         }}
       />
 
@@ -690,61 +938,14 @@ export const App: React.FC = () => {
         isOpen={config.isChatWindowOpen}
         onClose={() => setConfig(prev => ({ ...prev, isChatWindowOpen: false }))}
         isConnected={isConnected}
-        onSendMessage={async (text) => {
-          isFirstInteractionRef.current = false;
-          // Add user message to history
-          const userMsg: TranscriptionEntry = { role: 'user', text };
-          setTranscriptions(prev => [...prev, userMsg]);
-
-          try {
-            setIsModelTalking(true);
-            const response = await fetch('/ask', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ 
-                query: text, 
-                useLocalOllama: config.useLocalOllama,
-                model: config.model,
-                apiKey: config.customApiKey,
-                history: transcriptions.map(t => ({ role: t.role === 'user' ? 'user' : 'assistant', content: t.text }))
-              })
-            });
-            
-            if (!response.body) throw new Error("No response body");
-            
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let fullText = '';
-            
-            setTranscriptions(prev => [...prev, { role: 'model', text: '' }]);
-
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              
-              const chunk = decoder.decode(value, { stream: true });
-              fullText += chunk;
-              
-              setTranscriptions(prev => {
-                const next = [...prev];
-                if (next.length > 0) {
-                  next[next.length - 1].text = fullText;
-                }
-                return next;
-              });
-            }
-            
-            const utterance = new SpeechSynthesisUtterance(fullText);
-            utterance.onend = () => setIsModelTalking(false);
-            window.speechSynthesis.speak(utterance);
-            
-          } catch (e) {
-            console.error("Backend error:", e);
-            setStatusMessage("Backend connection failed");
-            setIsModelTalking(false);
+        onSendMessage={(text) => {
+          if (sessionRef.current) {
+            sessionRef.current.sendRealtimeInput({ text });
           }
         }}
         onSpeak={(text) => {
+          // This would use a TTS service or the Gemini TTS model
+          // For now we'll use the browser's speech synthesis as a fallback
           const utterance = new SpeechSynthesisUtterance(text);
           window.speechSynthesis.speak(utterance);
         }}

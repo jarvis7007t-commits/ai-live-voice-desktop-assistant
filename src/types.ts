@@ -50,7 +50,6 @@ export interface LiveConfig {
   language: string;
   isDeveloperMode: boolean;
   isChatWindowOpen: boolean;
-  useLocalOllama: boolean;
   customApiKey?: string;
 }
 

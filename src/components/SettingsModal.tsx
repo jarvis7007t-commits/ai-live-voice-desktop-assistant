@@ -341,27 +341,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
             </button>
           </div>
 
-          {/* Local Ollama Toggle */}
-          <div className="flex items-center justify-between p-4 rounded-xl border border-slate-200 bg-white text-slate-700 mb-4 hover:border-cyan-400 transition-all">
-            <div className="flex items-center gap-3">
-              <Zap size={20} className="text-cyan-500" />
-              <div>
-                <span className="font-bold text-lg block">Local Ollama</span>
-                <p className="text-[9px] text-slate-400">Use local qwen3.5:9b model for offline speed.</p>
-              </div>
-            </div>
-            <div 
-              className={`w-12 h-6 rounded-full relative transition-colors cursor-pointer ${
-                config.useLocalOllama ? 'bg-cyan-500' : 'bg-slate-200'
-              }`}
-              onClick={() => setConfig(prev => ({ ...prev, useLocalOllama: !prev.useLocalOllama }))}
-            >
-              <div className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow-sm transition-all ${
-                config.useLocalOllama ? 'left-7' : 'left-1'
-              }`} />
-            </div>
-          </div>
-
           {/* AI Modules Toggle Button */}
           <button 
             onClick={() => setShowAIList(!showAIList)}
