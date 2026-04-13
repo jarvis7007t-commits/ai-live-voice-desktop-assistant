@@ -187,6 +187,17 @@ const automationTools: FunctionDeclaration[] = [
       },
       required: ['action', 'filePath'],
     },
+  },
+  {
+    name: 'run_command',
+    parameters: {
+      type: Type.OBJECT,
+      description: 'Executes a shell command in the terminal. Use this for advanced system tasks, installing packages, or running scripts.',
+      properties: {
+        command: { type: Type.STRING, description: 'The shell command to execute.' },
+      },
+      required: ['command'],
+    },
   }
 ];
 
@@ -335,6 +346,80 @@ const App: React.FC = () => {
       }
     }
   };
+  const startScreenShare = useCallback(async () => {
+    try {
+      let screenStream: MediaStream | null = null;
+      if (ipcRenderer) {
+        // Automatic screen selection in Electron
+        const sourceId = await ipcRenderer.invoke('automation:get_screen_source');
+        if (sourceId) {
+          screenStream = await navigator.mediaDevices.getUserMedia({
+            audio: false,
+            video: {
+              mandatory: {
+                chromeMediaSource: 'desktop',
+                chromeMediaSourceId: sourceId,
+                minWidth: 1280,
+                maxWidth: 1920,
+                minHeight: 720,
+                maxHeight: 1080
+              }
+            }
+          } as any);
+        }
+      } else if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
+        // Browser fallback with picker
+        // Using simpler constraints for better compatibility
+        screenStream = await navigator.mediaDevices.getDisplayMedia({ 
+          video: true, 
+          audio: false 
+        });
+      }
+
+      if (screenStream && screenVideoRef.current) {
+        screenVideoRef.current.srcObject = screenStream;
+        // Ensure the video plays
+        await screenVideoRef.current.play().catch(e => console.error("Screen video play failed:", e));
+        
+        screenStream.getTracks()[0].onended = () => {
+          setConfig(p => ({...p, isScreenEnabled: false}));
+        };
+        setConfig(p => ({...p, isScreenEnabled: true}));
+        setStatusMessage("Screen share active");
+        setTimeout(() => setStatusMessage(null), 2000);
+        return true;
+      } else {
+        throw new Error("No stream or video element");
+      }
+    } catch (e: any) {
+      console.warn("Screen share denied or unavailable", e);
+      if (e.name === 'NotAllowedError') {
+        setStatusMessage("Screen share permission denied");
+      } else {
+        setStatusMessage("Screen share failed. Try opening in a new tab.");
+      }
+      setTimeout(() => setStatusMessage(null), 5000);
+    }
+    return false;
+  }, [ipcRenderer]);
+
+  const stopScreenShare = useCallback(() => {
+    const screenStream = screenVideoRef.current?.srcObject as MediaStream;
+    screenStream?.getTracks().forEach(t => t.stop());
+    if (screenVideoRef.current) screenVideoRef.current.srcObject = null;
+    setConfig(p => ({...p, isScreenEnabled: false}));
+    setStatusMessage("Screen share stopped");
+    setTimeout(() => setStatusMessage(null), 2000);
+  }, []);
+
+  const toggleScreenShare = useCallback(async () => {
+    if (config.isScreenEnabled) {
+      stopScreenShare();
+    } else {
+      await startScreenShare();
+    }
+  }, [config.isScreenEnabled, startScreenShare, stopScreenShare]);
+
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   
@@ -359,7 +444,7 @@ const App: React.FC = () => {
   const sessionRef = useRef<any>(null);
   const isStoppingRef = useRef(false);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const screenVideoRef = useRef<HTMLVideoElement>(document.createElement('video'));
+  const screenVideoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const frameIntervalRef = useRef<number | null>(null);
 
@@ -506,42 +591,7 @@ const App: React.FC = () => {
 
       let screenStream: MediaStream | null = null;
       if (config.isScreenEnabled) {
-        try {
-          if (ipcRenderer) {
-            // Automatic screen selection in Electron
-            const sourceId = await ipcRenderer.invoke('automation:get_screen_source');
-            if (sourceId) {
-              screenStream = await navigator.mediaDevices.getUserMedia({
-                audio: false,
-                video: {
-                  mandatory: {
-                    chromeMediaSource: 'desktop',
-                    chromeMediaSourceId: sourceId,
-                    minWidth: 1280,
-                    maxWidth: 1920,
-                    minHeight: 720,
-                    maxHeight: 1080
-                  }
-                }
-              } as any);
-            }
-          } else if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
-            // Browser fallback with picker
-            screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: "always" } as any, audio: false });
-          }
-
-          if (screenStream && screenVideoRef.current) {
-            screenVideoRef.current.srcObject = screenStream;
-            screenVideoRef.current.onloadedmetadata = () => screenVideoRef.current.play();
-            screenStream.getTracks()[0].onended = () => setConfig(p => ({...p, isScreenEnabled: false}));
-            setConfig(p => ({...p, isScreenEnabled: true}));
-          }
-        } catch (e) {
-          console.warn("Screen share denied or unavailable", e);
-          setConfig(p => ({...p, isScreenEnabled: false}));
-          setStatusMessage("Voice-only mode (Screen denied)");
-          setTimeout(() => setStatusMessage(null), 3000);
-        }
+        await startScreenShare();
       }
 
       // Proactive check for microphone
@@ -595,7 +645,7 @@ const App: React.FC = () => {
           responseModalities: [Modality.AUDIO],
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: config.voiceName } } },
           tools: [{ functionDeclarations: automationTools }],
-          systemInstruction: "You are Wardenix, the ultimate AI OS Assistant with FULL NATIVE SYSTEM ACCESS. You operate on a high-performance PC. You have REAL-TIME VISION of the screen at all times. You receive commands via VOICE and TEXT CHAT. You MUST NOT guess or simulate actions. You MUST use the 'move_mouse', 'click_mouse', and 'type_text' tools to perform every single step of a task. For example, to play a video on YouTube: 1. Open Chrome. 2. Move mouse to the search bar. 3. Click. 4. Type the song name. 5. Press Enter. 6. Move mouse to the first video. 7. Click. You MUST see the result of your action on the screen before proceeding to the next step. You are fast, efficient, and have a bold, helpful personality. You are the master of this PC.",
+          systemInstruction: "You are Wardenix, the ultimate AI OS Assistant with FULL NATIVE SYSTEM ACCESS. You operate on a high-performance PC. You have REAL-TIME VISION of the screen at all times. You receive commands via VOICE and TEXT CHAT. You MUST NOT guess or simulate actions. You MUST use the 'move_mouse', 'click_mouse', 'type_text', and 'run_command' tools to perform every single step of a task. You can use the terminal ('run_command') to open apps, install packages, or run scripts. For coding, you can use 'manage_file' to create/edit code and 'run_command' to execute it. For messaging (like WhatsApp), you can use 'open_app', then navigate using mouse and keyboard tools. You MUST see the result of your action on the screen before proceeding to the next step. You are fast, efficient, and have a bold, helpful personality. You are the master of this PC.",
           inputAudioTranscription: {},
           outputAudioTranscription: {},
         },
@@ -665,7 +715,7 @@ const App: React.FC = () => {
                 let result: any = "ok";
                 if (ipcRenderer) {
                    // Security: Confirmation for dangerous actions
-                   const dangerousActions = ['system_power', 'manage_file'];
+                   const dangerousActions = ['system_power', 'manage_file', 'run_command'];
                    if (dangerousActions.includes(fc.name) && !pendingAction) {
                      setPendingAction(fc);
                      setStatusMessage(`Confirm Action: ${fc.name.replace('_', ' ')}?`);
@@ -680,7 +730,8 @@ const App: React.FC = () => {
                    if (fc.name === 'system_power') await ipcRenderer.invoke('automation:system_power', fc.args);
                    if (fc.name === 'open_app') await ipcRenderer.invoke('automation:open_app', fc.args);
                    if (fc.name === 'press_key') await ipcRenderer.invoke('automation:press_key', fc.args);
-                   if (fc.name === 'manage_file') await ipcRenderer.invoke('automation:manage_file', fc.args);
+                   if (fc.name === 'manage_file') result = await ipcRenderer.invoke('automation:manage_file', fc.args);
+                   if (fc.name === 'run_command') result = await ipcRenderer.invoke('automation:run_command', fc.args);
                    if (fc.name === 'set_volume') await ipcRenderer.invoke('automation:set_volume', fc.args);
                    if (fc.name === 'set_brightness') await ipcRenderer.invoke('automation:set_brightness', fc.args);
                    if (fc.name === 'toggle_wifi') await ipcRenderer.invoke('automation:toggle_wifi', fc.args);
@@ -792,6 +843,7 @@ const App: React.FC = () => {
                   let result = "ok";
                   if (fc.name === 'system_power') result = await ipcRenderer.invoke('automation:system_power', fc.args);
                   if (fc.name === 'manage_file') result = await ipcRenderer.invoke('automation:manage_file', fc.args);
+                  if (fc.name === 'run_command') result = await ipcRenderer.invoke('automation:run_command', fc.args);
                   
                   if (sessionRef.current) {
                     sessionRef.current.sendToolResponse({
@@ -827,6 +879,7 @@ const App: React.FC = () => {
       </AnimatePresence>
 
       <video ref={videoRef} autoPlay playsInline muted className="hidden" />
+      <video ref={screenVideoRef} autoPlay playsInline muted className="hidden" />
       <canvas ref={canvasRef} className="hidden" />
       
       {/* Transcriptions Display */}
@@ -900,7 +953,7 @@ const App: React.FC = () => {
         
         <button 
           className={`control-icon ${config.isScreenEnabled ? 'icon-active-cyan' : 'icon-inactive'}`} 
-          onClick={() => setConfig(p => ({...p, isScreenEnabled: !p.isScreenEnabled}))}
+          onClick={toggleScreenShare}
           title={config.isScreenEnabled ? "System Control Active (Screen Shared)" : "Enable System Control (Screen Share)"}
         >
           {isConnected ? <MousePointer2 size={16} className="animate-pulse" /> : <MousePointer2 size={16} />}

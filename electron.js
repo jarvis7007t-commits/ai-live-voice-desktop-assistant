@@ -319,6 +319,19 @@ ipcMain.handle('automation:manage_file', (event, { action, filePath, content }) 
   }
 });
 
+ipcMain.handle('automation:run_command', async (event, { command }) => {
+  console.log(`Automation: Running command "${command}"`);
+  return new Promise((resolve) => {
+    exec(command, (error, stdout, stderr) => {
+      if (error) {
+        resolve(`error: ${error.message}\n${stderr}`);
+        return;
+      }
+      resolve(stdout || "ok");
+    });
+  });
+});
+
 ipcMain.on('resize-window', (event, expand) => {
   if (mainWindow) {
     if (expand) {

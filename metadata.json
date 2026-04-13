@@ -3,6 +3,7 @@
   "description": "Wardenix is a powerful AI Assistant with specialized modules for Coding, Education, Health, Business, Content, Automation, and Security, featuring real-time voice and vision capabilities.",
   "requestFramePermissions": [
     "camera",
-    "microphone"
+    "microphone",
+    "display-capture"
   ]
 }
