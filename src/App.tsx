@@ -243,6 +243,7 @@ const App: React.FC = () => {
       description: 'Run local models like Qwen3-Next via Ollama API.', 
       enabled: false, 
       icon: 'terminal',
+      baseUrl: 'http://localhost:11434',
       versions: [
         { id: 'qwen3-next:80b-cloud', name: 'Qwen3 Next 80B' },
         { id: 'llama3', name: 'Llama 3' }
@@ -585,11 +586,11 @@ const App: React.FC = () => {
   const recognitionRef = useRef<any>(null);
 
   const startOllamaSession = async () => {
+    const ollamaSetting = config.aiSettings.find(s => s.id === 'ollama');
     try {
       setStatus(SessionStatus.CONNECTING);
       const { OllamaService } = await import('./services/ollamaService');
-      const ollamaSetting = config.aiSettings.find(s => s.id === 'ollama');
-      const ollama = new OllamaService(ollamaSetting?.apiKey || 'http://localhost:11434');
+      const ollama = new OllamaService(ollamaSetting?.baseUrl || 'http://localhost:11434', ollamaSetting?.apiKey);
       
       // Initial handshake/ping
       await ollama.generate({ model: ollamaSetting?.selectedVersion || 'qwen3-next:80b-cloud', prompt: 'ping' });
@@ -692,10 +693,23 @@ const App: React.FC = () => {
       recognitionRef.current = recognition;
       recognition.start();
 
-    } catch (err) {
+    } catch (err: any) {
       console.error("Ollama connection failed:", err);
       setStatus(SessionStatus.IDLE);
-      setStatusMessage("Ollama Server Not Found");
+      
+      let msg = err.message || "Ollama Server Not Found";
+      
+      if (window.location.protocol === 'file:') {
+        msg = "Error: Running from File! Use a web server.";
+        alert("CRITICAL ERROR: You are running the app directly from a file (file://). Browser security blocks AI connections in this mode. \n\nPlease run 'npm run dev' or use a local web server.");
+      }
+      
+      setStatusMessage(msg.length > 30 ? msg.substring(0, 30) + "..." : msg);
+      
+      // If it's a model error, maybe they need to pull it
+      if (msg.includes("model") && msg.includes("not found")) {
+        alert(`Model Error: The model "${ollamaSetting?.selectedVersion}" was not found on your Ollama server.\n\nPlease run: ollama pull ${ollamaSetting?.selectedVersion}`);
+      }
     }
   };
 

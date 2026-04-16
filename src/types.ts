@@ -20,6 +20,7 @@ export interface AISetting {
   enabled: boolean;
   icon: string;
   apiKey?: string;
+  baseUrl?: string;
   versions?: { id: string; name: string }[];
   selectedVersion?: string;
 }
