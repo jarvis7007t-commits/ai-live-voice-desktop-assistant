@@ -113,7 +113,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         exit={{ scale: 0.95, y: 20 }}
         drag
         dragMomentum={false}
-        className="bg-white w-full max-w-[450px] h-[650px] rounded-xl p-6 flex flex-col relative overflow-hidden shadow-2xl border border-slate-200"
+        className="bg-white w-full max-w-[450px] h-[650px] rounded-xl p-6 flex flex-col relative overflow-hidden"
         style={{ WebkitAppRegion: 'no-drag' } as any}
         onClick={e => e.stopPropagation()}
       >
@@ -155,19 +155,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                 <MessageSquare size={18} className="text-blue-500" />
                 <span className="font-bold text-slate-700">Wardenix Chat Terminal</span>
               </div>
-              <button 
-                onClick={() => {
-                  setConfig(prev => ({ ...prev, isChatWindowOpen: !prev.isChatWindowOpen }));
-                  onClose();
-                }}
-                className={`px-4 py-2 rounded-lg font-bold text-xs transition-all ${
-                  config.isChatWindowOpen 
-                    ? 'bg-red-50 text-red-600 border border-red-100' 
-                    : 'bg-blue-600 text-white shadow-md hover:bg-blue-700'
-                }`}
-              >
-                {config.isChatWindowOpen ? 'Close Terminal' : 'Open Terminal'}
-              </button>
             </div>
             <p className="text-[9px] text-slate-400 mt-2 px-1">
               Open a dedicated high-tech window for text, image, and file-based interaction.
