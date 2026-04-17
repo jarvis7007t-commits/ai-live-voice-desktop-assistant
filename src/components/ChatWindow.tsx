@@ -77,7 +77,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ isOpen, onClose, onSendMessage,
       exit={{ opacity: 0, x: 100 }}
       drag
       dragMomentum={false}
-      className="fixed right-10 top-20 w-[400px] h-[600px] bg-[#0a0c10] rounded-2xl flex flex-col overflow-hidden z-[60]"
+      className="fixed right-10 top-20 w-[400px] h-[600px] bg-[#0a0c10] border border-slate-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden z-[60]"
       style={{ WebkitAppRegion: 'no-drag' } as any}
     >
       {/* Header */}
