@@ -113,7 +113,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         exit={{ scale: 0.95, y: 20 }}
         drag
         dragMomentum={false}
-        className="bg-white w-full max-w-[450px] h-[650px] rounded-xl p-6 flex flex-col relative overflow-hidden shadow-2xl border border-slate-200"
+        className="bg-white w-full max-w-[450px] h-[650px] rounded-xl p-6 flex flex-col relative overflow-hidden"
         style={{ WebkitAppRegion: 'no-drag' } as any}
         onClick={e => e.stopPropagation()}
       >
@@ -414,7 +414,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                           </div>
                         </div>
 
-                        {/* Module API Key Input */}
+                        {/* Module API Key/URL Input */}
                         <AnimatePresence>
                           {setting.enabled && (
                             <motion.div
@@ -423,19 +423,117 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                               exit={{ height: 0, opacity: 0 }}
                               className="ml-14 overflow-hidden"
                             >
-                              <div className="pb-2">
-                                <input 
-                                  type="password"
-                                  placeholder={`${setting.name} API Key...`}
-                                  value={setting.apiKey || ''}
-                                  onChange={e => setConfig(prev => ({
-                                    ...prev,
-                                    aiSettings: prev.aiSettings.map(s => 
-                                      s.id === setting.id ? { ...s, apiKey: e.target.value } : s
-                                    )
-                                  }))}
-                                  className="w-full bg-slate-50 border border-slate-100 rounded-lg px-3 py-2 text-[10px] text-slate-600 placeholder:text-slate-300 focus:outline-none focus:border-purple-300 transition-all"
-                                />
+                              <div className="pb-4 space-y-3">
+                                {setting.id === 'ollama' ? (
+                                  <div className="space-y-2">
+                                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Ollama Server URL</p>
+                                    <div className="flex gap-2">
+                                      <input 
+                                        type="text"
+                                        placeholder="http://localhost:11434"
+                                        value={setting.baseUrl || ''}
+                                        onChange={e => setConfig(prev => ({
+                                          ...prev,
+                                          aiSettings: prev.aiSettings.map(s => 
+                                            s.id === setting.id ? { ...s, baseUrl: e.target.value } : s
+                                          )
+                                        }))}
+                                        className="flex-1 bg-slate-50 border border-slate-100 rounded-lg px-3 py-2 text-[10px] text-slate-600 focus:outline-none focus:border-purple-300 transition-all"
+                                      />
+                                      <button 
+                                        onClick={async () => {
+                                          try {
+                                            const headers: any = { 'Content-Type': 'application/json' };
+                                            if (setting.apiKey) headers['Authorization'] = `Bearer ${setting.apiKey}`;
+                                            const res = await fetch(`${setting.baseUrl}/api/tags`, { headers });
+                                            if (res.ok) alert("Connection Successful!");
+                                            else {
+                                              const body = await res.json().catch(() => ({}));
+                                              alert(`Server Error: ${body.error || res.statusText || res.status}`);
+                                            }
+                                          } catch (e) {
+                                            alert("Connection Failed. Check URL, API Key, and CORS settings (OLLAMA_ORIGINS=\"*\").");
+                                          }
+                                        }}
+                                        className="bg-purple-100 text-purple-600 px-3 py-2 rounded-lg text-[10px] font-bold hover:bg-purple-200 transition-all"
+                                      >
+                                        Test
+                                      </button>
+                                    </div>
+                                    <p className="text-[8px] text-amber-600 leading-tight italic">
+                                      * Important: Run Ollama with OLLAMA_ORIGINS="*" to allow browser access.
+                                    </p>
+                                    
+                                    <div className="pt-2 space-y-2">
+                                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Ollama API Key (Optional)</p>
+                                      <input 
+                                        type="password"
+                                        placeholder="Leave empty for local..."
+                                        value={setting.apiKey || ''}
+                                        onChange={e => setConfig(prev => ({
+                                          ...prev,
+                                          aiSettings: prev.aiSettings.map(s => 
+                                            s.id === setting.id ? { ...s, apiKey: e.target.value } : s
+                                          )
+                                        }))}
+                                        className="w-full bg-slate-50 border border-slate-100 rounded-lg px-3 py-2 text-[10px] text-slate-600 focus:outline-none focus:border-purple-300 transition-all"
+                                      />
+                                    </div>
+                                  </div>
+                                ) : setting.id === 'wardenix' ? (
+                                  <div className="space-y-2">
+                                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Wardenix Bridge URL (Use ngrok for Cloud)</p>
+                                    <div className="flex gap-2">
+                                      <input 
+                                        type="text"
+                                        placeholder="https://your-ngrok-link.ngrok-free.app"
+                                        value={setting.baseUrl || ''}
+                                        onChange={e => setConfig(prev => ({
+                                          ...prev,
+                                          aiSettings: prev.aiSettings.map(s => 
+                                            s.id === setting.id ? { ...s, baseUrl: e.target.value } : s
+                                          )
+                                        }))}
+                                        className="flex-1 bg-slate-50 border border-slate-100 rounded-lg px-3 py-2 text-[10px] text-slate-600 focus:outline-none focus:border-purple-300 transition-all"
+                                      />
+                                      <button 
+                                        onClick={async () => {
+                                          try {
+                                            const res = await fetch(`${setting.baseUrl}/status`, {
+                                              headers: { 'ngrok-skip-browser-warning': 'true' }
+                                            });
+                                            if (res.ok) alert("Wardenix Bridge Online!");
+                                            else alert("Bridge responded but with an error.");
+                                          } catch (e) {
+                                            alert("Bridge Offline! If you are in the browser preview, use a public tunnel (ngrok) and paste the URL here. 127.0.0.1 only works if app is running locally on your PC.");
+                                          }
+                                        }}
+                                        className="bg-purple-100 text-purple-600 px-3 py-2 rounded-lg text-[10px] font-bold hover:bg-purple-200 transition-all"
+                                      >
+                                        Test
+                                      </button>
+                                    </div>
+                                    <p className="text-[8px] text-blue-600 leading-tight italic">
+                                      * Tip: Cloud preview requires a public URL (e.g. ngrok). 127.0.0.1 is for local execution only.
+                                    </p>
+                                  </div>
+                                ) : (
+                                  <div className="space-y-2">
+                                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{setting.name} API Key</p>
+                                    <input 
+                                      type="password"
+                                      placeholder={`${setting.name} API Key...`}
+                                      value={setting.apiKey || ''}
+                                      onChange={e => setConfig(prev => ({
+                                        ...prev,
+                                        aiSettings: prev.aiSettings.map(s => 
+                                          s.id === setting.id ? { ...s, apiKey: e.target.value } : s
+                                        )
+                                      }))}
+                                      className="w-full bg-slate-50 border border-slate-100 rounded-lg px-3 py-2 text-[10px] text-slate-600 placeholder:text-slate-300 focus:outline-none focus:border-purple-300 transition-all"
+                                    />
+                                  </div>
+                                )}
                               </div>
                             </motion.div>
                           )}

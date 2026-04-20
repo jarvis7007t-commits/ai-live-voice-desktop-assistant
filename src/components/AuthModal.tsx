@@ -50,7 +50,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
         initial={{ scale: 0.9, y: 40 }}
         animate={{ scale: 1, y: 0 }}
         exit={{ scale: 0.9, y: 40 }}
-        className="bg-white border border-slate-200 w-full max-w-md rounded-3xl overflow-hidden"
+        className="bg-white w-full max-w-md rounded-3xl overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
         <div className="p-8">

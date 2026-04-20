@@ -212,6 +212,21 @@ const automationTools: FunctionDeclaration[] = [
   }
 ];
 
+const WARDENIX_PROMPT = `तुम एक एडवांस्ड 'Autonomous System OS' हो जिसका नाम 'वार्डनिक्स' (Wardenix) है। तुम्हारा प्राथमिक उद्देश्य मनीष के पीसी को पूर्णतः नियंत्रित करना और उनके कार्यों को स्वचालित (Automate) करना है।
+
+हार्डवेयर और सॉफ्टवेयर एक्सेस:
+तुम्हें OpenClaw Gateway के माध्यम से मनीष के विंडोज पीसी का 'Kernel-Level' एक्सेस प्राप्त है। तुम निम्नलिखित कार्यों के लिए उत्तरदायी हो:
+1. सॉफ्टवेयर कंट्रोल: VS Code, Chrome, Photoshop जैसे ऐप्स को खोलना, बंद करना और उनमें काम करना।
+2. हार्डवेयर कंट्रोल: सिस्टम वॉल्यूम, ब्राइटनेस, वाईफाई, कैमरा (snap), और बैटरी स्टेटस को मैनेज करना।
+3. डेवलपर मोड: मनीष एक UI डिजाइनर हैं, इसलिए तुम्हें उनके लिए फोल्डर स्ट्रक्चर बनाना, npm install चलाना और रिएक्ट/इलेक्ट्रॉन कोड लिखकर फाइल्स को सही डायरेक्टरी में सेव करना है।
+4. ब्राउज़र ऑटोमेशन: यूट्यूब पर गाने बजाना, वेबसाइट्स से डेटा निकालना और मनीष के Amazon सेलर अकाउंट से जुड़े काम करना।
+
+संचालन निर्देश:
+- जब मनीष कोई कमांड दें, तो पहले shell_run या browser_open टूल्स का उपयोग करके एक्शन लो, फिर जवाब दो।
+- यदि मनीष कहें 'Project Setup', तो तुरंत उनके Desktop पर फोल्डर बनाकर index.html, style.css और script.js फाइल तैयार करो।
+- तुम्हारी आवाज़ और भाषा हिंदी होनी चाहिए (Hindi), लेकिन टेक्निकल शब्द इंग्लिश (English) में बोल सकते हो।
+- तुम्हारी कॉन्टेक्स्ट लिमिट 10,000 है, इसलिए पिछले प्रोजेक्ट्स को याद रखो और उनसे रेफरेंस लो।`;
+
 const App: React.FC = () => {
   const queryParams = new URLSearchParams(window.location.search);
   const isCameraView = queryParams.get('view') === 'camera';
@@ -236,6 +251,27 @@ const App: React.FC = () => {
         { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash' }
       ],
       selectedVersion: MODEL_NAME
+    },
+    { 
+      id: 'ollama', 
+      name: 'Ollama (Local)', 
+      description: 'Run local models like Qwen3-Next via Ollama API.', 
+      enabled: false, 
+      icon: 'terminal',
+      baseUrl: 'http://localhost:11434',
+      versions: [
+        { id: 'qwen3-next:80b-cloud', name: 'Qwen3 Next 80B' },
+        { id: 'llama3', name: 'Llama 3' }
+      ],
+      selectedVersion: 'qwen3-next:80b-cloud'
+    },
+    { 
+      id: 'wardenix', 
+      name: 'Wardenix Bridge (PC Control)', 
+      description: 'Connect to Manish\'s PC via OpenClaw Gateway. Required for system automation.', 
+      enabled: false, 
+      icon: 'monitor',
+      baseUrl: 'http://127.0.0.1:18789'
     },
     { id: 'coding', name: 'Coding Module', description: 'Advanced full-stack development, debugging, and architecture.', enabled: true, icon: 'code' },
     { id: 'education', name: 'Education Module', description: 'Personalized learning, tutoring, and academic research.', enabled: true, icon: 'brain' },
@@ -470,6 +506,21 @@ const App: React.FC = () => {
   }, [isSettingsOpen, isAuthOpen, ipcRenderer]);
 
   const stopSession = useCallback(() => {
+    const wardenixSetting = config.aiSettings.find(s => s.id === 'wardenix');
+    if (wardenixSetting?.enabled && wardenixBridgeRef.current) {
+      wardenixBridgeRef.current.disconnect();
+      wardenixBridgeRef.current = null;
+    }
+    const ollamaSetting = config.aiSettings.find(s => s.id === 'ollama');
+    if (ollamaSetting?.enabled && recognitionRef.current) {
+      recognitionRef.current.stop();
+      recognitionRef.current = null;
+      window.speechSynthesis.cancel();
+      setStatus(SessionStatus.IDLE);
+      setStatusMessage("Ollama Disconnected");
+      playSound('stop');
+      return;
+    }
     playSound('stop');
     isStoppingRef.current = true;
     if (ipcRenderer) ipcRenderer.send('resize-window', false);
@@ -499,7 +550,7 @@ const App: React.FC = () => {
     setConfig(c => ({...c, isCameraEnabled: false, isScreenEnabled: false}));
     setIsAutomationAuthorized(false);
     setTimeout(() => { isStoppingRef.current = false; }, 500);
-  }, [ipcRenderer, cameraStream]);
+  }, [ipcRenderer, cameraStream, config]);
 
   const startVisionLoop = useCallback((sessionPromise: Promise<any>) => {
     if (frameIntervalRef.current) window.clearInterval(frameIntervalRef.current);
@@ -560,7 +611,273 @@ const App: React.FC = () => {
     }
   };
 
+  const recognitionRef = useRef<any>(null);
+  const wardenixBridgeRef = useRef<any>(null);
+
+  const startWardenixSession = async () => {
+    const wardenixSetting = config.aiSettings.find(s => s.id === 'wardenix');
+    try {
+      setStatus(SessionStatus.CONNECTING);
+      const { WardenixBridgeService } = await import('./services/wardenixBridgeService');
+      const bridge = new WardenixBridgeService(wardenixSetting?.baseUrl || 'http://127.0.0.1:18789');
+      
+      await bridge.checkStatus();
+      
+      setStatus(SessionStatus.CONNECTED);
+      setStatusMessage("Wardenix Bridge Online");
+      playSound('start');
+
+      bridge.connectWS(
+        (data) => {
+          if (data.role === 'model') {
+            setTranscriptions(prev => [...prev, { role: 'model', text: data.text }]);
+            setIsModelTalking(true);
+            const utterance = new SpeechSynthesisUtterance(data.text);
+            utterance.lang = 'hi-IN';
+            utterance.onend = () => setIsModelTalking(false);
+            window.speechSynthesis.speak(utterance);
+          }
+        },
+        () => stopSession()
+      );
+
+      wardenixBridgeRef.current = bridge;
+
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        setStatusMessage("Speech recognition not supported");
+        return;
+      }
+
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = false;
+      recognition.lang = 'hi-IN';
+
+      recognition.onstart = () => {
+        setIsUserTalking(true);
+        setStatusMessage("Suniye Manish...");
+      };
+
+      recognition.onresult = async (event: any) => {
+        const transcript = event.results[event.results.length - 1][0].transcript;
+        if (!transcript.trim()) return;
+
+        setTranscriptions(prev => [...prev, { role: 'user', text: transcript }]);
+        setIsUserTalking(false);
+        setIsModelTalking(true);
+        setStatusMessage("Wardenix soch raha hai...");
+
+        try {
+          const history = transcriptions.slice(-5).map(t => ({
+            role: t.role === 'user' ? 'user' : 'assistant',
+            content: t.text
+          }));
+
+          const response = await bridge.chat(
+            [{ role: 'system', content: WARDENIX_PROMPT }, ...history, { role: 'user', content: transcript }]
+          );
+          
+          const content = response.message.content;
+          setTranscriptions(prev => [...prev, { role: 'model', text: content }]);
+          
+          const utterance = new SpeechSynthesisUtterance(content);
+          utterance.lang = 'hi-IN';
+          utterance.onend = () => setIsModelTalking(false);
+          window.speechSynthesis.speak(utterance);
+
+          const jsonRegex = /\{(?:[^{}]|(\{[^{}]*\}))*\}/g;
+          const matches = content.match(jsonRegex);
+          if (matches) {
+            for (const match of matches) {
+              try {
+                const data = JSON.parse(match);
+                if (data.tool && data.args) {
+                  setPendingAction({
+                    id: Math.random().toString(36).substring(7),
+                    name: data.tool,
+                    args: data.args
+                  });
+                  break;
+                }
+              } catch (e) {}
+            }
+          }
+        } catch (err) {
+          console.error("Wardenix error:", err);
+          setStatusMessage("Connection lost");
+          setIsModelTalking(false);
+        }
+      };
+
+      recognition.onerror = (event: any) => { if (event.error !== 'no-speech') stopSession(); };
+      recognition.onend = () => { if (status === SessionStatus.CONNECTED && recognitionRef.current) recognition.start(); };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+
+    } catch (err: any) {
+      console.error("Wardenix failure:", err);
+      setStatus(SessionStatus.IDLE);
+      let errorMsg = err.message || "Bridge Offline";
+      
+      if (wardenixSetting?.baseUrl?.includes('127.0.0.1') || wardenixSetting?.baseUrl?.includes('localhost')) {
+        errorMsg = "Bridge Offline. Tip: OpenClaw requires a public URL (ngrok) in Cloud Preview.";
+      }
+      
+      setStatusMessage(errorMsg);
+    }
+  };
+
+  const startOllamaSession = async () => {
+    const ollamaSetting = config.aiSettings.find(s => s.id === 'ollama');
+    try {
+      setStatus(SessionStatus.CONNECTING);
+      const { OllamaService } = await import('./services/ollamaService');
+      const ollama = new OllamaService(ollamaSetting?.baseUrl || 'http://localhost:11434', ollamaSetting?.apiKey);
+      
+      // Initial handshake/ping
+      await ollama.generate({ model: ollamaSetting?.selectedVersion || 'qwen3-next:80b-cloud', prompt: 'ping' });
+      
+      setStatus(SessionStatus.CONNECTED);
+      setStatusMessage("Ollama System Connected");
+      playSound('start');
+
+      // Setup Speech Recognition
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        setStatusMessage("Speech recognition not supported");
+        return;
+      }
+
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = false;
+      recognition.lang = 'en-US';
+
+      recognition.onstart = () => {
+        setIsUserTalking(true);
+        setStatusMessage("Listening...");
+      };
+
+      recognition.onresult = async (event: any) => {
+        const transcript = event.results[event.results.length - 1][0].transcript;
+        if (!transcript.trim()) return;
+
+        setTranscriptions(prev => [...prev, { role: 'user', text: transcript }]);
+        setIsUserTalking(false);
+        setIsModelTalking(true);
+        setStatusMessage("Wardenix is thinking...");
+
+        try {
+          // Get conversation history for context
+          const history = transcriptions.slice(-5).map(t => ({
+            role: t.role === 'user' ? 'user' : 'assistant',
+            content: t.text
+          }));
+
+          const response = await ollama.chat(
+            [...history, { role: 'user', content: transcript }], 
+            ollamaSetting?.selectedVersion || 'qwen3-next:80b-cloud'
+          );
+          
+          const content = response.message.content;
+          setTranscriptions(prev => [...prev, { role: 'model', text: content }]);
+          
+          // TTS
+          const utterance = new SpeechSynthesisUtterance(content);
+          // Use selected voice if possible
+          const voices = window.speechSynthesis.getVoices();
+          const selectedVoice = voices.find(v => v.name.includes(config.voiceName));
+          if (selectedVoice) utterance.voice = selectedVoice;
+          
+          utterance.onend = () => setIsModelTalking(false);
+          window.speechSynthesis.speak(utterance);
+
+          // Advanced Tool Parsing
+          const jsonRegex = /\{(?:[^{}]|(\{[^{}]*\}))*\}/g;
+          const matches = content.match(jsonRegex);
+          
+          if (matches) {
+            for (const match of matches) {
+              try {
+                const data = JSON.parse(match);
+                if (data.tool && data.args) {
+                  setPendingAction({
+                    id: Math.random().toString(36).substring(7),
+                    name: data.tool,
+                    args: data.args
+                  });
+                  break; // Handle one tool at a time for safety
+                }
+              } catch (e) {}
+            }
+          }
+
+        } catch (err) {
+          console.error("Ollama chat error:", err);
+          setStatusMessage("Ollama connection lost");
+          setIsModelTalking(false);
+        }
+      };
+
+      recognition.onerror = (event: any) => {
+        console.error("Speech recognition error:", event.error);
+        if (event.error !== 'no-speech') {
+          stopSession();
+        }
+      };
+
+      recognition.onend = () => {
+        if (status === SessionStatus.CONNECTED && recognitionRef.current) {
+          recognition.start(); // Keep listening
+        }
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+
+    } catch (err: any) {
+      console.error("Ollama connection failed:", err);
+      setStatus(SessionStatus.IDLE);
+      
+      let msg = err.message || "Ollama Server Not Found";
+      
+      if (window.location.protocol === 'file:') {
+        msg = "Error: Running from File! Use a web server.";
+        alert("CRITICAL ERROR: You are running the app directly from a file (file://). Browser security blocks AI connections in this mode. \n\nPlease run 'npm run dev' or use a local web server.");
+      }
+      
+      setStatusMessage(msg.length > 30 ? msg.substring(0, 30) + "..." : msg);
+      
+      // If it's a model error, maybe they need to pull it
+      if (msg.includes("model") && msg.includes("not found")) {
+        alert(`Model Error: The model "${ollamaSetting?.selectedVersion}" was not found on your Ollama server.\n\nPlease run: ollama pull ${ollamaSetting?.selectedVersion}`);
+      }
+    }
+  };
+
   const startSession = async () => {
+    const wardenixSetting = config.aiSettings.find(s => s.id === 'wardenix');
+    const ollamaSetting = config.aiSettings.find(s => s.id === 'ollama');
+    const hasGeminiKey = !!(config.customApiKey || process.env.GEMINI_API_KEY || process.env.API_KEY);
+
+    // If Gemini is available, we ALWAYS use it for the primary voice session (Human-like interaction)
+    // Local modules like Wardenix or Ollama will act as execution/processing bridges
+    if (hasGeminiKey) {
+      // Start Gemini Session (Wardenix Bridge will be used as a Tool Target automatically)
+      return startGeminiSession();
+    }
+    
+    // Fallback if no Gemini key: use direct Local Modules if enabled
+    if (wardenixSetting?.enabled) return startWardenixSession();
+    if (ollamaSetting?.enabled) return startOllamaSession();
+
+    setStatusMessage("Gemini API Key missing");
+    setStatus(SessionStatus.IDLE);
+  };
+
+  const startGeminiSession = async () => {
     if (status !== SessionStatus.IDLE) return;
     try {
       playSound('start');
@@ -727,7 +1044,16 @@ const App: React.FC = () => {
                    if (fc.name === 'open_app') await ipcRenderer.invoke('automation:open_app', fc.args);
                    if (fc.name === 'press_key') await ipcRenderer.invoke('automation:press_key', fc.args);
                    if (fc.name === 'manage_file') result = await ipcRenderer.invoke('automation:manage_file', fc.args);
-                   if (fc.name === 'run_command') result = await ipcRenderer.invoke('automation:run_command', fc.args);
+                   if (fc.name === 'run_command') {
+                     const { validateCommand } = await import('./services/ollamaService');
+                     const validation = validateCommand(fc.args.command);
+                     if (!validation.safe) {
+                       result = `Error: ${validation.reason}`;
+                       setStatusMessage("Blocked: Harmful Command");
+                     } else {
+                       result = await ipcRenderer.invoke('automation:run_command', fc.args);
+                     }
+                   }
                    if (fc.name === 'set_volume') await ipcRenderer.invoke('automation:set_volume', fc.args);
                    if (fc.name === 'set_brightness') await ipcRenderer.invoke('automation:set_brightness', fc.args);
                    if (fc.name === 'toggle_wifi') await ipcRenderer.invoke('automation:toggle_wifi', fc.args);
@@ -837,14 +1163,58 @@ const App: React.FC = () => {
                   const fc = pendingAction;
                   setPendingAction(null);
                   let result = "ok";
-                  if (fc.name === 'system_power') result = await ipcRenderer.invoke('automation:system_power', fc.args);
-                  if (fc.name === 'manage_file') result = await ipcRenderer.invoke('automation:manage_file', fc.args);
-                  if (fc.name === 'run_command') result = await ipcRenderer.invoke('automation:run_command', fc.args);
+                  
+                  const wardenixSetting = config.aiSettings.find(s => s.id === 'wardenix');
+                  if (wardenixSetting?.baseUrl && wardenixSetting.baseUrl !== 'http://127.0.0.1:18789') {
+                    // Try to use the bridge
+                    try {
+                      const res = await fetch(`${wardenixSetting.baseUrl.replace(/\/$/, '')}/api/chat`, {
+                        method: 'POST',
+                        headers: { 
+                          'Content-Type': 'application/json',
+                          'ngrok-skip-browser-warning': 'true'
+                        },
+                        body: JSON.stringify({
+                          model: 'wardenix-execute',
+                          messages: [{ role: 'user', content: `EXECUTE TOOL: ${fc.name} WITH ARGS: ${JSON.stringify(fc.args)}` }],
+                          stream: false
+                        })
+                      });
+                      if (res.ok) {
+                        const data = await res.json();
+                        result = data.message?.content || "Executed via Wardenix Bridge";
+                      } else {
+                        result = `Bridge Error: ${res.statusText}`;
+                      }
+                    } catch (e) {
+                      result = "Bridge Offline: Ensure ngrok is running and URL is correct.";
+                    }
+                  } else if (ipcRenderer) {
+                    if (fc.name === 'move_mouse') result = await ipcRenderer.invoke('automation:move', fc.args);
+                    if (fc.name === 'click_mouse') result = await ipcRenderer.invoke('automation:click', fc.args);
+                    if (fc.name === 'type_text') result = await ipcRenderer.invoke('automation:type', fc.args);
+                    if (fc.name === 'run_command') {
+                      const { validateCommand } = await import('./services/ollamaService');
+                      const validation = validateCommand(fc.args.command);
+                      if (validation.safe) result = await ipcRenderer.invoke('automation:run_command', fc.args);
+                      else result = `Error: ${validation.reason}`;
+                    }
+                    if (fc.name === 'system_power') result = await ipcRenderer.invoke('automation:system_power', fc.args);
+                    if (fc.name === 'manage_file') result = await ipcRenderer.invoke('automation:manage_file', fc.args);
+                    if (fc.name === 'open_app') result = await ipcRenderer.invoke('automation:open_app', fc.args);
+                  }
                   
                   if (sessionRef.current) {
                     sessionRef.current.sendToolResponse({
                       functionResponses: { id: fc.id, name: fc.name, response: { result: result } }
                     });
+                  } else {
+                    // Ollama feedback loop
+                    const ollamaSetting = config.aiSettings.find(s => s.id === 'ollama');
+                    if (ollamaSetting?.enabled) {
+                      setTranscriptions(prev => [...prev, { role: 'user', text: `[SYSTEM] Tool ${fc.name} executed with result: ${JSON.stringify(result)}` }]);
+                      // In a real app, you might trigger another chat call here automatically
+                    }
                   }
                   setStatusMessage("Action Confirmed");
                   setTimeout(() => setStatusMessage(null), 2000);
@@ -908,8 +1278,8 @@ const App: React.FC = () => {
       >
         <div className="vortex-glow"></div>
         <img 
-          src="https://img.icons8.com/ios-filled/100/ffffff/globe--v1.png" 
-          className="globe-overlay w-full h-full object-contain p-1"
+          src="https://ybclafjjnjdkecmegtyk.supabase.co/storage/v1/object/public/images/3a08db9a-f6b1-4f94-8af3-2ca494fc8833/1776310620401-pikfzt5c0po.png" 
+          className="globe-overlay w-full h-full object-contain p-2.5"
           alt="Globe"
           referrerPolicy="no-referrer"
         />
@@ -1043,7 +1413,7 @@ const App: React.FC = () => {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 10 }}
-            className="absolute -top-10 left-1/2 -translate-x-1/2 bg-zinc-800 text-cyan-400 text-[9px] font-bold px-3 py-1 rounded-full border border-cyan-400/30 whitespace-nowrap"
+            className="absolute -top-10 left-1/2 -translate-x-1/2 bg-zinc-800 text-cyan-400 text-[9px] font-bold px-3 py-1 rounded-full whitespace-nowrap"
           >
             {statusMessage}
           </motion.div>
