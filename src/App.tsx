@@ -1023,48 +1023,80 @@ const App: React.FC = () => {
 
             // 2. Handle Tool Calls
             if (message.toolCall) {
+              const wardenixSetting = config.aiSettings.find(s => s.id === 'wardenix');
+              const useBridge = !!(wardenixSetting?.baseUrl && wardenixSetting.baseUrl !== 'http://127.0.0.1:18789');
+
               for (const fc of message.toolCall.functionCalls) {
                 let result: any = "ok";
-                if (ipcRenderer) {
+                if (ipcRenderer || useBridge) {
                    // Security: Confirmation for dangerous actions
-                   const dangerousActions = ['system_power', 'manage_file', 'run_command'];
+                   const dangerousActions = ['system_power', 'manage_file', 'run_command', 'open_app'];
                    if (dangerousActions.includes(fc.name) && !pendingAction) {
                      setPendingAction(fc);
                      setStatusMessage(`Confirm Action: ${fc.name.replace('_', ' ')}?`);
                      continue;
                    }
 
-                   if (fc.name === 'move_mouse') result = await ipcRenderer.invoke('automation:move', fc.args);
-                   if (fc.name === 'click_mouse') result = await ipcRenderer.invoke('automation:click', fc.args);
-                   if (fc.name === 'double_click') result = await ipcRenderer.invoke('automation:click', { ...fc.args, double: true });
-                   if (fc.name === 'type_text') result = await ipcRenderer.invoke('automation:type', fc.args);
-                   if (fc.name === 'scroll_screen') result = await ipcRenderer.invoke('automation:scroll', fc.args);
-                   if (fc.name === 'open_url') await ipcRenderer.invoke('automation:open_url', fc.args);
-                   if (fc.name === 'system_power') await ipcRenderer.invoke('automation:system_power', fc.args);
-                   if (fc.name === 'open_app') await ipcRenderer.invoke('automation:open_app', fc.args);
-                   if (fc.name === 'press_key') await ipcRenderer.invoke('automation:press_key', fc.args);
-                   if (fc.name === 'manage_file') result = await ipcRenderer.invoke('automation:manage_file', fc.args);
-                   if (fc.name === 'run_command') {
-                     const { validateCommand } = await import('./services/ollamaService');
-                     const validation = validateCommand(fc.args.command);
-                     if (!validation.safe) {
-                       result = `Error: ${validation.reason}`;
-                       setStatusMessage("Blocked: Harmful Command");
-                     } else {
-                       result = await ipcRenderer.invoke('automation:run_command', fc.args);
+                   if (useBridge && !ipcRenderer) {
+                     // Execute via bridge
+                     try {
+                        setStatusMessage(`Bridge Action: ${fc.name}`);
+                        const res = await fetch(`${wardenixSetting!.baseUrl!.replace(/\/$/, '')}/api/chat`, {
+                          method: 'POST',
+                          headers: { 
+                            'Content-Type': 'application/json',
+                            'ngrok-skip-browser-warning': 'true'
+                          },
+                          body: JSON.stringify({
+                            model: 'wardenix-execute',
+                            messages: [{ role: 'user', content: `EXECUTE TOOL: ${fc.name} WITH ARGS: ${JSON.stringify(fc.args)}` }],
+                            stream: false
+                          })
+                        });
+                        if (res.ok) {
+                          const data = await res.json();
+                          result = data.message?.content || "Executed via Bridge";
+                        } else {
+                          result = `Bridge Error: ${res.statusText}`;
+                        }
+                     } catch (e) {
+                        result = "Bridge Offline: Check connection.";
+                        setStatusMessage("⚠️ Bridge Error");
                      }
-                   }
-                   if (fc.name === 'set_volume') await ipcRenderer.invoke('automation:set_volume', fc.args);
-                   if (fc.name === 'set_brightness') await ipcRenderer.invoke('automation:set_brightness', fc.args);
-                   if (fc.name === 'toggle_wifi') await ipcRenderer.invoke('automation:toggle_wifi', fc.args);
-                   if (fc.name === 'toggle_bluetooth') await ipcRenderer.invoke('automation:toggle_bluetooth', fc.args);
-                   if (fc.name === 'toggle_camera') {
-                     if (fc.args.enabled !== isCameraPreviewOpen) toggleCameraPreview();
-                     result = "ok";
-                   }
-                   if (fc.name === 'toggle_microphone') {
-                     setConfig(p => ({...p, isMuted: !fc.args.enabled}));
-                     result = "ok";
+                   } else if (ipcRenderer) {
+                      // Standard Desktop App execution
+                      if (fc.name === 'move_mouse') result = await ipcRenderer.invoke('automation:move', fc.args);
+                      if (fc.name === 'click_mouse') result = await ipcRenderer.invoke('automation:click', fc.args);
+                      if (fc.name === 'double_click') result = await ipcRenderer.invoke('automation:click', { ...fc.args, double: true });
+                      if (fc.name === 'type_text') result = await ipcRenderer.invoke('automation:type', fc.args);
+                      if (fc.name === 'scroll_screen') result = await ipcRenderer.invoke('automation:scroll', fc.args);
+                      if (fc.name === 'open_url') await ipcRenderer.invoke('automation:open_url', fc.args);
+                      if (fc.name === 'system_power') await ipcRenderer.invoke('automation:system_power', fc.args);
+                      if (fc.name === 'open_app') await ipcRenderer.invoke('automation:open_app', fc.args);
+                      if (fc.name === 'press_key') await ipcRenderer.invoke('automation:press_key', fc.args);
+                      if (fc.name === 'manage_file') result = await ipcRenderer.invoke('automation:manage_file', fc.args);
+                      if (fc.name === 'run_command') {
+                        const { validateCommand } = await import('./services/ollamaService');
+                        const validation = validateCommand(fc.args.command);
+                        if (!validation.safe) {
+                          result = `Error: ${validation.reason}`;
+                          setStatusMessage("Blocked: Harmful Command");
+                        } else {
+                          result = await ipcRenderer.invoke('automation:run_command', fc.args);
+                        }
+                      }
+                      if (fc.name === 'set_volume') await ipcRenderer.invoke('automation:set_volume', fc.args);
+                      if (fc.name === 'set_brightness') await ipcRenderer.invoke('automation:set_brightness', fc.args);
+                      if (fc.name === 'toggle_wifi') await ipcRenderer.invoke('automation:toggle_wifi', fc.args);
+                      if (fc.name === 'toggle_bluetooth') await ipcRenderer.invoke('automation:toggle_bluetooth', fc.args);
+                      if (fc.name === 'toggle_camera') {
+                        if (fc.args.enabled !== isCameraPreviewOpen) toggleCameraPreview();
+                        result = "ok";
+                      }
+                      if (fc.name === 'toggle_microphone') {
+                        setConfig(p => ({...p, isMuted: !fc.args.enabled}));
+                        result = "ok";
+                      }
                    }
                    
                    setStatusMessage(`AI Action: ${fc.name.replace('_', ' ')}`);
