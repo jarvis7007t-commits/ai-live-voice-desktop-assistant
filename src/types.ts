@@ -1,4 +1,19 @@
 
+export interface ChatSession {
+  id: string;
+  userId: string;
+  title: string;
+  createdAt: any;
+}
+
+export interface Message {
+  id: string;
+  sessionId: string;
+  role: 'user' | 'model';
+  content: string;
+  createdAt: any;
+}
+
 export interface TranscriptionEntry {
   role: 'user' | 'model';
   text: string;
@@ -55,7 +70,8 @@ export interface LiveConfig {
 }
 
 export interface UserProfile {
+  uid: string;
   email: string;
-  name: string;
-  isLoggedIn: boolean;
+  displayName: string;
+  photoURL?: string;
 }

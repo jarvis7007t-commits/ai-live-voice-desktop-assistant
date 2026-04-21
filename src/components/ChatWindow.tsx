@@ -1,205 +1,187 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { Send, Mic, Paperclip, Loader2, Volume2, User, Sparkles } from 'lucide-react';
+import { Message } from '../types';
+import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Send, Image as ImageIcon, FileUp, Play, User, Bot, Paperclip } from 'lucide-react';
-
-interface Message {
-  id: string;
-  role: 'user' | 'bot';
-  text: string;
-  timestamp: Date;
-  attachments?: { name: string; type: string; url: string }[];
-}
+import Visualizer from './Visualizer';
 
 interface ChatWindowProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onSendMessage: (text: string) => void;
+  messages: Message[];
+  onSendMessage: (text: string, useThinking: boolean, attachments?: File[]) => Promise<string | null>;
   onSpeak: (text: string) => void;
-  isConnected: boolean;
+  onVoiceInput: (text: string) => void;
+  isLoading: boolean;
+  isSpeaking: boolean;
+  sessionTitle: string;
+  displayName: string;
+  isLiveMode: boolean;
+  onToggleLiveMode: (val: boolean) => void;
+  selectedVoice: string;
+  onVoiceChange: (voice: any) => void;
 }
 
-const ChatWindow: React.FC<ChatWindowProps> = ({ isOpen, onClose, onSendMessage, onSpeak, isConnected }) => {
-  const [messages, setMessages] = useState<Message[]>([
-    { id: '1', role: 'bot', text: 'Wardenix Terminal Online. How can I assist you today?', timestamp: new Date() }
-  ]);
+export const ChatWindow: React.FC<ChatWindowProps> = ({
+  messages,
+  onSendMessage,
+  onSpeak,
+  onVoiceInput,
+  isLoading,
+  isSpeaking,
+  sessionTitle,
+  displayName,
+  isLiveMode,
+  onToggleLiveMode,
+  selectedVoice,
+  onVoiceChange
+}) => {
   const [input, setInput] = useState('');
-  const [attachments, setAttachments] = useState<{ name: string; type: string; url: string }[]>([]);
+  const [isThinking, setIsThinking] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, isLoading]);
 
-  const handleSend = (e?: React.FormEvent) => {
-    e?.preventDefault();
-    if (!input.trim() && attachments.length === 0) return;
-
-    const newMessage: Message = {
-      id: Date.now().toString(),
-      role: 'user',
-      text: input,
-      timestamp: new Date(),
-      attachments: attachments.length > 0 ? [...attachments] : undefined
-    };
-
-    setMessages(prev => [...prev, newMessage]);
-    onSendMessage(input);
+  const handleSend = async () => {
+    if (!input.trim() || isLoading) return;
+    const text = input;
     setInput('');
-    setAttachments([]);
-
-    // Simulate bot response for demo (in real app, this comes from the session)
-    if (isConnected) {
-      // The actual response will come through the sessionRef in App.tsx
-    }
+    await onSendMessage(text, isThinking);
   };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files) {
-      const newFiles = Array.from(files).map((file: File) => ({
-        name: file.name,
-        type: file.type,
-        url: URL.createObjectURL(file)
-      }));
-      setAttachments(prev => [...prev, ...newFiles]);
-    }
-  };
-
-  if (!isOpen) return null;
 
   return (
-    <motion.div
-      initial={{ opacity: 0, x: 100 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: 100 }}
-      drag
-      dragMomentum={false}
-      className="fixed right-10 top-20 w-[400px] h-[600px] bg-[#0a0c10] rounded-2xl flex flex-col overflow-hidden z-[60]"
-      style={{ WebkitAppRegion: 'no-drag' } as any}
-    >
+    <div className="flex-1 flex flex-col h-full bg-[#FCFDFF]">
       {/* Header */}
-      <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-[#0d1117] cursor-move">
+      <div className="h-16 border-b border-slate-100 flex items-center justify-between px-6 bg-white/80 backdrop-blur-md sticky top-0 z-30">
         <div className="flex items-center gap-3">
-          <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-          <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Wardenix Terminal</span>
+          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+          <h2 className="text-sm font-bold text-slate-700 truncate max-w-[200px]">{sessionTitle}</h2>
         </div>
-        <button onClick={onClose} className="text-slate-500 hover:text-white transition-colors">
-          <X size={18} />
-        </button>
+        
+        <div className="flex items-center gap-2">
+          {isSpeaking && (
+            <div className="bg-indigo-600/10 px-3 py-1 rounded-full flex items-center gap-2">
+              <Visualizer isActive={true} isUserTalking={false} isModelTalking={true} />
+              <span className="text-[10px] font-bold text-indigo-600 animate-pulse uppercase tracking-widest font-mono">Speaking</span>
+            </div>
+          )}
+          <div className="hidden sm:flex items-center gap-2 bg-slate-50 border border-slate-100 rounded-lg px-3 py-1.5">
+            <User className="w-3.5 h-3.5 text-slate-400" />
+            <span className="text-[11px] font-bold text-slate-500">{displayName}</span>
+          </div>
+        </div>
       </div>
 
-      {/* Messages Area */}
-      <div 
-        ref={scrollRef}
-        className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-[radial-gradient(circle_at_center,rgba(34,211,238,0.03)_0%,transparent_100%)]"
-      >
-        {messages.map((msg) => (
-          <div key={msg.id} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-            <div className={`flex items-center gap-2 mb-1 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
-              <div className={`w-6 h-6 rounded-full flex items-center justify-center ${msg.role === 'user' ? 'bg-blue-600' : 'bg-slate-800'}`}>
-                {msg.role === 'user' ? <User size={12} className="text-white" /> : <Bot size={12} className="text-blue-400" />}
-              </div>
-              <span className="text-[10px] font-bold text-slate-500 uppercase">{msg.role}</span>
+      {/* Messages */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
+        {messages.length === 0 && !isLoading && (
+          <div className="h-full flex flex-col items-center justify-center text-center space-y-4">
+            <div className="w-16 h-16 bg-indigo-50 rounded-full flex items-center justify-center">
+              <Sparkles className="w-8 h-8 text-indigo-500" />
             </div>
-            
-            <div className={`max-w-[85%] p-3 rounded-2xl text-sm ${
-              msg.role === 'user' 
-                ? 'bg-blue-600/10 border border-blue-500/20 text-blue-100 rounded-tr-none' 
-                : 'bg-slate-900 border border-slate-800 text-slate-300 rounded-tl-none'
-            }`}>
-              {msg.text}
-              
-              {msg.attachments && (
-                <div className="mt-2 space-y-2">
-                  {msg.attachments.map((file, i) => (
-                    <div key={i} className="flex items-center gap-2 p-2 bg-black/20 rounded-lg border border-white/5">
-                      {file.type.startsWith('image/') ? (
-                        <img src={file.url} alt={file.name} className="w-10 h-10 rounded object-cover" />
-                      ) : (
-                        <Paperclip size={14} className="text-slate-400" />
-                      )}
-                      <span className="text-[10px] truncate flex-1">{file.name}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
+            <div>
+              <h3 className="text-lg font-bold text-slate-800">Hello, {displayName}!</h3>
+              <p className="text-sm text-slate-400 max-w-xs">I'm Wardenix. How can I help you automate your PC or design projects today?</p>
             </div>
+          </div>
+        )}
 
-            {msg.role === 'bot' && (
+        {messages.map((msg, i) => (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            key={msg.id || i}
+            className={cn(
+              "flex flex-col gap-2 max-w-[85%] md:max-w-[70%]",
+              msg.role === 'user' ? "ml-auto items-end" : "mr-auto items-start"
+            )}
+          >
+            <div className={cn(
+              "p-4 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap shadow-sm",
+              msg.role === 'user' 
+                ? "bg-indigo-600 text-white rounded-tr-none" 
+                : "bg-white border border-slate-100 text-slate-700 rounded-tl-none"
+            )}>
+              {msg.content}
+            </div>
+            {msg.role === 'model' && (
               <button 
-                onClick={() => onSpeak(msg.text)}
-                className="mt-2 flex items-center gap-1.5 text-[10px] font-bold text-blue-500 hover:text-blue-400 transition-colors bg-blue-500/5 px-2 py-1 rounded-full border border-blue-500/10"
+                onClick={() => onSpeak(msg.content)}
+                className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
               >
-                <Play size={10} fill="currentColor" />
-                LISTEN AI RESPONSE
+                <Volume2 className={cn("w-4 h-4", isSpeaking && "text-indigo-600 animate-pulse")} />
               </button>
             )}
-          </div>
+          </motion.div>
         ))}
+
+        {isLoading && (
+          <div className="flex gap-2 items-center text-slate-400">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span className="text-xs font-medium italic">Wardenix is thinking...</span>
+          </div>
+        )}
       </div>
 
       {/* Input Area */}
-      <div className="p-4 bg-[#0d1117] border-t border-slate-800">
-        {attachments.length > 0 && (
-          <div className="flex gap-2 mb-3 overflow-x-auto pb-2 custom-scrollbar">
-            {attachments.map((file, i) => (
-              <div key={i} className="relative group shrink-0">
-                <div className="w-12 h-12 rounded-lg border border-slate-700 bg-slate-800 flex items-center justify-center overflow-hidden">
-                  {file.type.startsWith('image/') ? (
-                    <img src={file.url} alt="" className="w-full h-full object-cover" />
-                  ) : (
-                    <Paperclip size={16} className="text-slate-400" />
+      <div className="p-4 md:p-8 pt-0">
+        <div className="max-w-4xl mx-auto">
+          <div className="relative bg-white border border-slate-200 rounded-2xl shadow-xl focus-within:border-indigo-300 focus-within:ring-4 focus-within:ring-indigo-500/10 transition-all overflow-hidden p-2">
+            <div className="flex items-end gap-2 px-2">
+              <button className="p-3 text-slate-400 hover:text-slate-600 transition-colors">
+                <Paperclip className="w-5 h-5" />
+              </button>
+              
+              <textarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSend();
+                  }
+                }}
+                placeholder="Ask anything..."
+                className="flex-1 bg-transparent border-none focus:ring-0 text-sm py-3 min-h-[44px] max-h-48 resize-none placeholder:text-slate-300"
+                rows={1}
+              />
+              
+              <div className="flex items-center gap-2 pb-1.5">
+                <button
+                  onClick={() => setIsThinking(!isThinking)}
+                  className={cn(
+                    "p-2.5 rounded-xl transition-all",
+                    isThinking ? "bg-amber-100 text-amber-600" : "bg-slate-50 text-slate-400 hover:bg-slate-100"
                   )}
-                </div>
-                <button 
-                  onClick={() => setAttachments(prev => prev.filter((_, idx) => idx !== i))}
-                  className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                  title="Think deeply"
                 >
-                  <X size={10} />
+                  <Sparkles className="w-4 h-4" />
+                </button>
+
+                <button
+                  onClick={handleSend}
+                  disabled={!input.trim() || isLoading}
+                  className="bg-indigo-600 text-white p-2.5 rounded-xl hover:bg-indigo-700 disabled:opacity-50 disabled:hover:bg-indigo-600 transition-all shadow-lg"
+                >
+                  {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
                 </button>
               </div>
-            ))}
+            </div>
           </div>
-        )}
-        
-        <form onSubmit={handleSend} className="flex items-center gap-2">
-          <input 
-            type="file" 
-            ref={fileInputRef} 
-            onChange={handleFileChange} 
-            multiple 
-            className="hidden" 
-          />
-          <button 
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="p-2 text-slate-500 hover:text-blue-400 transition-colors"
-          >
-            <FileUp size={20} />
-          </button>
           
-          <input 
-            type="text"
-            placeholder="Type command or message..."
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            className="flex-1 bg-slate-900/50 border border-slate-800 rounded-xl px-4 py-2 text-sm text-slate-300 focus:outline-none focus:border-blue-500/50 transition-all"
-          />
-          
-          <button 
-            type="submit"
-            disabled={!input.trim() && attachments.length === 0}
-            className="p-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all disabled:opacity-50 disabled:scale-95"
-          >
-            <Send size={18} />
-          </button>
-        </form>
+          <div className="mt-3 flex items-center justify-between px-2">
+            <div className="flex items-center gap-4">
+              <button className="flex items-center gap-2 text-[11px] font-bold text-indigo-600 hover:opacity-80">
+                <Mic className="w-3.5 h-3.5" />
+                <span>Voice Input</span>
+              </button>
+            </div>
+            <p className="text-[10px] text-slate-400 italic">Press Enter to send, Shift + Enter for new line</p>
+          </div>
+        </div>
       </div>
-    </motion.div>
+    </div>
   );
 };
-
-export default ChatWindow;
