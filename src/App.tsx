@@ -333,6 +333,7 @@ export default function App() {
         isOpen={isSidebarOpen}
         setIsOpen={setIsSidebarOpen}
         displayName={user.displayName || 'User'}
+        photoURL={user.photoURL || undefined}
       />
 
       <main className="flex-1 relative flex flex-col min-w-0 transition-all duration-300">
@@ -345,6 +346,7 @@ export default function App() {
           isSpeaking={isSpeaking}
           sessionTitle={currentSession?.title || "Wardenix"}
           displayName={user.displayName || 'User'}
+          photoURL={user.photoURL || undefined}
           isLiveMode={isLiveMode}
           onToggleLiveMode={setIsLiveMode}
           selectedVoice={selectedVoice}
