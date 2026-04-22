@@ -11,7 +11,8 @@ import {
   Bot, 
   HelpCircle, 
   ArrowUpCircle, 
-  Files 
+  Files,
+  Zap
 } from 'lucide-react';
 import { ChatSession } from '../types';
 import { cn } from '../lib/utils';
@@ -118,6 +119,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </button>
               </div>
             ))}
+          </div>
+        </div>
+
+        {/* Bridge Status Indicator */}
+        <div className="px-6 mb-4">
+          <div className={cn(
+            "flex items-center gap-3 p-3 rounded-2xl border transition-all",
+            localStorage.getItem('BRIDGE_URL') ? "bg-emerald-50/50 border-emerald-100" : "bg-slate-50/50 border-slate-100"
+          )}>
+            <div className={cn(
+              "w-2 h-2 rounded-full shadow-[0_0_8px_rgba(16,185,129,0.5)]",
+              localStorage.getItem('BRIDGE_URL') ? "bg-emerald-500 animate-pulse" : "bg-slate-300"
+            )} />
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">PC Master Bridge</p>
+              <p className="text-xs font-bold text-slate-600 truncate">
+                {localStorage.getItem('BRIDGE_URL')?.replace(/https?:\/\//, '') || "Bridge Offline"}
+              </p>
+            </div>
           </div>
         </div>
 

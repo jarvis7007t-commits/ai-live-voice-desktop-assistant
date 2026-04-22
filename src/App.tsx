@@ -198,22 +198,58 @@ export default function App() {
       const fullHistory = await dbService.getMessages(sessionId!);
       const history = fullHistory.slice(-50); 
       
-      let pastHistoryText = "";
       const chatMessages = history.map(m => ({ role: m.role, content: m.content }));
+      const pastHistoryText = history.map(m => `${m.role === 'user' ? 'User' : 'Wardenix'}: ${m.content}`).join('\n');
       
-      const responseData = await generateChatResponse(chatMessages, useThinking, pastHistoryText);
+      const responseData = await generateChatResponse(chatMessages, useThinking, pastHistoryText, config.model);
       if (responseData) {
-        const responseText = responseData.text;
-        
+        const { text: responseText, calls } = responseData as any;
+        let finalContent = responseText;
+
+        if (calls && calls.length > 0) {
+          const bridgeUrl = localStorage.getItem('BRIDGE_URL');
+          const logs = [];
+          
+          for (const call of calls) {
+            const commandPayload = {
+              action: call.name,
+              target: call.args.target || call.args.appName || call.args.action || call.args.url || null,
+              value: call.args.value || null,
+              requires_confirmation: false 
+            };
+
+            const displayLabel = `${call.name.replace(/_/g, ' ').toUpperCase()}`;
+            logs.push(`\n\n### 🖥️ PC COMMAND: ${displayLabel}`);
+            
+            if (bridgeUrl) {
+              try {
+                const res = await fetch(`${bridgeUrl}/execute`, {
+                  method: 'POST',
+                  mode: 'cors',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(commandPayload)
+                });
+                const result = await res.json();
+                logs.push(`\n\n✅ **Execution Result:** ${result.message || result.status || 'Sent Successfully'}`);
+              } catch (e) {
+                logs.push(`\n\n❌ **Bridge Error:** Could not connect to local bridge at \`${bridgeUrl}\`. Use ngrok or run locally.`);
+              }
+            } else {
+              logs.push(`\n\n⚠️ **Notice:** Local Bridge URL not configured in Settings.`);
+            }
+          }
+          finalContent += logs.join("");
+        }
+
         await dbService.addMessage(sessionId!, {
           sessionId: sessionId!,
           role: 'model',
-          content: responseText
+          content: finalContent
         });
         await loadMessages(sessionId!);
 
         handleSpeak(responseText);
-        return responseText;
+        return finalContent;
       }
     } catch (e: any) {
       console.error("AI API Error:", e);

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Mic, Paperclip, Loader2, Volume2, User, Sparkles } from 'lucide-react';
+import { Send, Mic, Paperclip, Loader2, Volume2, User, Sparkles, Copy, Share2, ThumbsUp } from 'lucide-react';
 import { Message } from '../types';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
@@ -104,38 +104,56 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             </div>
           </div>
         ) : (
-          messages.map((msg, i) => (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              key={msg.id || i}
-              className={cn(
-                "flex flex-col gap-2 max-w-[85%] md:max-w-[70%]",
-                msg.role === 'user' ? "ml-auto items-end" : "mr-auto items-start"
-              )}
-            >
-              <div className={cn(
-                "p-4 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap shadow-sm",
-                msg.role === 'user' 
-                  ? "bg-indigo-600 text-white rounded-tr-none" 
-                  : "bg-white border border-slate-100 text-slate-700 rounded-tl-none"
-              )}>
-                {msg.content}
-              </div>
-              {msg.role === 'model' && (
-                <button 
-                  onClick={() => onSpeak(msg.content)}
-                  className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
-                >
-                  <Volume2 className={cn("w-4 h-4", isSpeaking && "text-indigo-600 animate-pulse")} />
-                </button>
-              )}
-            </motion.div>
-          ))
+          <div className="max-w-4xl mx-auto w-full space-y-12">
+            {messages.map((msg, i) => (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                key={msg.id || i}
+                className={cn(
+                  "flex flex-col gap-3",
+                  msg.role === 'user' ? "items-end" : "items-start"
+                )}
+              >
+                <div className={cn(
+                  "text-base leading-relaxed whitespace-pre-wrap max-w-[90%]",
+                  msg.role === 'user' 
+                    ? "bg-slate-100 text-slate-600 px-6 py-3 rounded-3xl" 
+                    : "text-slate-800 font-medium"
+                )}>
+                  {msg.content}
+                </div>
+                
+                {msg.role === 'model' && (
+                  <div className="flex items-center gap-4 px-1">
+                    <button className="p-1 text-slate-300 hover:text-slate-500 transition-colors" title="Copy">
+                      <Copy className="w-4 h-4" />
+                    </button>
+                    <button className="p-1 text-slate-300 hover:text-slate-500 transition-colors" title="Share休">
+                      <Share2 className="w-4 h-4" />
+                    </button>
+                    <button className="p-1 text-slate-300 hover:text-slate-500 transition-colors" title="Like">
+                      <ThumbsUp className="w-4 h-4" />
+                    </button>
+                    <button 
+                      onClick={() => onSpeak(msg.content)}
+                      className={cn(
+                        "p-1 transition-all",
+                        isSpeaking ? "text-indigo-600" : "text-slate-300 hover:text-indigo-600"
+                      )}
+                      title="Speak"
+                    >
+                      <Volume2 className={cn("w-4 h-4", isSpeaking && "animate-pulse")} />
+                    </button>
+                  </div>
+                )}
+              </motion.div>
+            ))}
+          </div>
         )}
 
         {isLoading && (
-          <div className="flex gap-2 items-center text-slate-400 p-4">
+          <div className="max-w-4xl mx-auto w-full flex gap-2 items-center text-slate-400 p-4">
             <Loader2 className="w-4 h-4 animate-spin" />
             <span className="text-xs font-medium italic">Wardenix is thinking...</span>
           </div>
@@ -143,62 +161,70 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       </div>
 
       {/* Input Area */}
-      <div className={cn("p-4 md:p-8", messages.length === 0 ? "pb-12" : "pt-0")}>
-        <div className="max-w-4xl mx-auto">
+      <div className={cn("p-4 md:p-8 relative", messages.length === 0 ? "pb-20" : "pt-0")}>
+        <div className="max-w-4xl mx-auto flex flex-col items-center">
           <div className={cn(
-            "relative bg-white border rounded-[2rem] shadow-2xl transition-all overflow-hidden p-2 group",
-            messages.length === 0 ? "border-indigo-100/50 hover:border-indigo-200" : "border-slate-200 focus-within:border-indigo-300"
+            "relative w-full max-w-3xl flex items-center bg-white border-[1.5px] rounded-full p-1.5 transition-all group",
+            messages.length === 0 
+              ? "border-[#D1D5FF] shadow-[0_0_20px_rgba(209,213,255,0.4)]" 
+              : "border-slate-200 focus-within:border-[#D1D5FF] focus-within:shadow-[0_0_15px_rgba(209,213,255,0.3)]"
           )}>
-            <div className="flex items-center gap-2 px-4 h-14">
+            <div className="flex items-center gap-1 pl-4 pr-2">
               <button className="p-2 text-slate-300 hover:text-slate-500 transition-colors">
-                <Paperclip className="w-5 h-5" />
+                <Paperclip className="w-5 h-5 stroke-[1.5]" />
+              </button>
+            </div>
+            
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSend();
+                }
+              }}
+              placeholder="Search..."
+              className="flex-1 bg-transparent border-none focus:ring-0 text-base py-3 h-11 resize-none placeholder:text-slate-300 font-medium overflow-hidden"
+              rows={1}
+            />
+            
+            <div className="flex items-center gap-3 pr-2">
+              <button className="p-2 text-slate-300 hover:text-slate-500 transition-colors border-r border-slate-100 pr-4">
+                <Mic className="w-5 h-5 stroke-[1.5]" />
               </button>
               
-              <textarea
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSend();
-                  }
-                }}
-                placeholder="Search..."
-                className="flex-1 bg-transparent border-none focus:ring-0 text-base py-3 h-10 resize-none placeholder:text-slate-300 font-medium"
-                rows={1}
-              />
-              
-              <div className="flex items-center gap-2">
-                <button className="p-2 text-slate-300 hover:text-slate-500 transition-colors">
-                  <Mic className="w-5 h-5" />
-                </button>
-                
-                <button
-                  onClick={handleSend}
-                  disabled={!input.trim() || isLoading}
-                  className={cn(
-                    "w-12 h-12 bg-slate-900 text-white rounded-full flex items-center justify-center transition-all shadow-lg active:scale-95 disabled:bg-slate-100 disabled:text-slate-300",
-                    isSpeaking && "bg-indigo-600 animate-pulse"
-                  )}
-                >
-                  {isLoading ? (
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                  ) : isSpeaking ? (
-                    <div className="flex gap-0.5 items-center">
-                      <div className="w-1 h-3 bg-white rounded-full animate-bounce [animation-delay:-0.3s]" />
-                      <div className="w-1 h-4 bg-white rounded-full animate-bounce [animation-delay:-0.15s]" />
-                      <div className="w-1 h-3 bg-white rounded-full animate-bounce" />
-                    </div>
-                  ) : (
-                    <Send className="w-5 h-5" />
-                  )}
-                </button>
-              </div>
+              <button
+                onClick={handleSend}
+                disabled={!input.trim() || isLoading}
+                className={cn(
+                  "w-12 h-12 bg-[#0F172A] text-white rounded-full flex items-center justify-center transition-all shadow-lg active:scale-95 disabled:bg-slate-100 disabled:text-slate-300",
+                  isSpeaking && "bg-indigo-600"
+                )}
+              >
+                {isLoading ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : isSpeaking ? (
+                  <div className="flex gap-0.5 items-center">
+                    <div className="w-1 h-3 bg-white rounded-full animate-bounce [animation-delay:-0.3s]" />
+                    <div className="w-1 h-4 bg-white rounded-full animate-bounce [animation-delay:-0.15s]" />
+                    <div className="w-1 h-3 bg-white rounded-full animate-bounce" />
+                  </div>
+                ) : (
+                  <div className="flex gap-0.5 items-center">
+                    <div className="w-0.5 h-3 bg-white/40 rounded-full" />
+                    <div className="w-0.5 h-4 bg-white rounded-full" />
+                    <div className="w-0.5 h-6 bg-white rounded-full" />
+                    <div className="w-0.5 h-4 bg-white rounded-full" />
+                    <div className="w-0.5 h-3 bg-white/40 rounded-full" />
+                  </div>
+                )}
+              </button>
             </div>
           </div>
           
-          <div className="mt-4 flex items-center justify-center">
-            <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest opacity-50">Personal AI Assistant</p>
+          <div className="mt-4">
+            <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em] opacity-80">Personal AI Assistant</p>
           </div>
         </div>
       </div>
