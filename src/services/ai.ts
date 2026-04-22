@@ -1,6 +1,6 @@
 import { GoogleGenAI, Modality, ThinkingLevel } from "@google/genai";
 
-// PC Control Tool Specializations
+// PC Control Tool Specializations (Formatted for internal generateContent API)
 const pcControlTools = [
   {
     functionDeclarations: [
@@ -8,9 +8,9 @@ const pcControlTools = [
         name: "open_app",
         description: "Launch an allowed application on the PC.",
         parameters: {
-          type: "object",
+          type: "OBJECT",
           properties: {
-            target: { type: "string", description: "Key name of the app (e.g., chrome, notepad, calculator)." }
+            target: { type: "STRING", description: "Key name of the app (e.g., chrome, notepad, calculator)." }
           },
           required: ["target"]
         }
@@ -19,9 +19,9 @@ const pcControlTools = [
         name: "close_app",
         description: "Terminate an allowed process/application.",
         parameters: {
-          type: "object",
+          type: "OBJECT",
           properties: {
-            target: { type: "string", description: "Name of the process to close (e.g., notepad, chrome)." }
+            target: { type: "STRING", description: "Name of the process to close (e.g., notepad, chrome)." }
           },
           required: ["target"]
         }
@@ -30,9 +30,9 @@ const pcControlTools = [
         name: "set_brightness",
         description: "Adjust the PC screen brightness level.",
         parameters: {
-          type: "object",
+          type: "OBJECT",
           properties: {
-            value: { type: "integer", description: "Brightness percentage (10-100)." }
+            value: { type: "INTEGER", description: "Brightness percentage (10-100)." }
           },
           required: ["value"]
         }
@@ -41,9 +41,9 @@ const pcControlTools = [
         name: "wifi_toggle",
         description: "Turn Wi-Fi on or off.",
         parameters: {
-          type: "object",
+          type: "OBJECT",
           properties: {
-            target: { type: "string", enum: ["on", "off"], description: "The desired Wi-Fi state." }
+            target: { type: "STRING", enum: ["on", "off"], description: "The desired Wi-Fi state." }
           },
           required: ["target"]
         }
@@ -52,7 +52,7 @@ const pcControlTools = [
         name: "get_system_info",
         description: "Retrieve CPU, RAM, Disk, and Battery statistics from the PC.",
         parameters: {
-          type: "object",
+          type: "OBJECT",
           properties: {}
         }
       },
@@ -60,7 +60,7 @@ const pcControlTools = [
         name: "lock_pc",
         description: "Immediately lock the Windows workstation.",
         parameters: {
-          type: "object",
+          type: "OBJECT",
           properties: {}
         }
       },
@@ -68,7 +68,7 @@ const pcControlTools = [
         name: "sleep_pc",
         description: "Put the PC into sleep mode.",
         parameters: {
-          type: "object",
+          type: "OBJECT",
           properties: {}
         }
       },
@@ -76,9 +76,9 @@ const pcControlTools = [
         name: "power_action",
         description: "Shutdown or Restart the PC.",
         parameters: {
-          type: "object",
+          type: "OBJECT",
           properties: {
-            action: { type: "string", enum: ["shutdown", "restart"], description: "The power action to take." }
+            action: { type: "STRING", enum: ["shutdown", "restart"], description: "The power action to take." }
           },
           required: ["action"]
         }
@@ -87,9 +87,9 @@ const pcControlTools = [
         name: "open_web_link",
         description: "Search the web or open a specific URL in the default browser.",
         parameters: {
-          type: "object",
+          type: "OBJECT",
           properties: {
-            url: { type: "string", description: "The search query or full URL." }
+            url: { type: "STRING", description: "The search query or full URL." }
           },
           required: ["url"]
         }
@@ -98,7 +98,7 @@ const pcControlTools = [
   }
 ];
 
-let genAI: GoogleGenAI | null = null;
+let genAI: any = null;
 let currentKey: string | null = null;
 
 export function getAI(customKey?: string) {
@@ -116,10 +116,10 @@ export async function generateChatResponse(
   messages: { role: string; content: string }[], 
   useThinking: boolean = false, 
   pastContext: string = "",
-  modelId: string = "gemini-2.0-flash-exp"
+  modelId: string = "gemini-3-flash-preview"
 ) {
   const ai = getAI();
-  const modelName = modelId.includes('gemini') ? modelId : "gemini-2.0-flash-exp"; 
+  const model = modelId || "gemini-3-flash-preview"; 
   
   const contents = messages.map(m => ({
     role: m.role === 'user' ? 'user' : 'model',
@@ -137,32 +137,27 @@ export async function generateChatResponse(
   - If a user asks to "Search YouTube for [Topic]", use open_web_link(url="https://www.youtube.com/results?search_query=[Topic]").
   - You are fluent in Hindi, English, and Hinglish.
   - Always explain the action you are taking clearly.
-  - For sensitive actions like shutdown or restart, confirm with the user first unless they sound urgent.
-  
-  When the user asks "What did I say in the last set?" or similar memory queries, refer to the HISTORY CONTEXT above.`;
+  - For sensitive actions like shutdown or restart, confirm with the user first unless they sound urgent.`;
 
   try {
-    const generativeModel = ai.getGenerativeModel({
-      model: modelName,
-      systemInstruction,
-      tools: pcControlTools,
-    });
-
-    const result = await generativeModel.generateContent({
+    const response = await ai.models.generateContent({
+      model,
       contents,
-      generationConfig: {
-        thinkingConfig: useThinking ? { includeThoughts: true } : undefined,
-      },
+      config: {
+        systemInstruction,
+        thinkingConfig: useThinking ? { thinkingLevel: ThinkingLevel.HIGH } : undefined,
+        tools: pcControlTools,
+        toolConfig: { includeServerSideToolInvocations: true }
+      }
     });
 
-    const response = result.response;
-    const text = response.text() || "";
-    const functionCalls = response.getFunctionCalls();
+    const text = response.text || "";
+    const functionCalls = response.functionCalls;
 
     if (functionCalls && functionCalls.length > 0) {
       return { 
         text: text || "Executing system command...", 
-        calls: functionCalls.map(f => ({
+        calls: functionCalls.map((f: any) => ({
           name: f.name,
           args: f.args
         }))
@@ -178,10 +173,10 @@ export async function generateChatResponse(
 export async function generateTTS(text: string, voice: string) {
   try {
     const ai = getAI();
-    const model = ai.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
-    const response = await model.generateContent({
+    const response = await ai.models.generateContent({
+      model: "gemini-3.1-flash-tts-preview",
       contents: [{ role: 'user', parts: [{ text: `Say: ${text}` }] }],
-      generationConfig: {
+      config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: {
           voiceConfig: {
@@ -191,7 +186,7 @@ export async function generateTTS(text: string, voice: string) {
       }
     });
 
-    const base64Audio = response.response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
     return base64Audio || null;
   } catch (error) {
     console.error("TTS Error:", error);
