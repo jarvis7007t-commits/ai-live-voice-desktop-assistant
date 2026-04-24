@@ -71,6 +71,18 @@ export default function App() {
           icon: 'zap',
           enabled: true,
           baseUrl: localStorage.getItem('BRIDGE_URL') || ''
+        },
+        {
+          id: 'imagegen',
+          name: 'Image Engine',
+          description: 'AI Image generation using Pollinations or Gemini',
+          icon: 'image',
+          enabled: true,
+          selectedVersion: 'pollinations',
+          versions: [
+            { id: 'pollinations', name: 'Free Pollinations (No Key)' },
+            { id: 'gemini_imagen', name: 'Gemini Imagen 3 (Free Tier)' }
+          ]
         }
       ]
     };
@@ -211,6 +223,13 @@ export default function App() {
           const logs = [];
           
           for (const call of calls) {
+            if (call.name === 'imagine_image') {
+              const prompt = call.args.prompt;
+              const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=1024&nologo=true&seed=${Math.floor(Math.random() * 1000000)}`;
+              logs.push(`\n\n### 🎨 Generated Image\n![${prompt}](${imageUrl})`);
+              continue;
+            }
+
             const commandPayload = {
               action: call.name,
               target: call.args.target || call.args.appName || call.args.action || call.args.url || null,

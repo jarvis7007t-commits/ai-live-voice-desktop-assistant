@@ -4,6 +4,7 @@ import { Message } from '../types';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import Visualizer from './Visualizer';
+import Markdown from 'react-markdown';
 
 interface ChatWindowProps {
   messages: Message[];
@@ -116,12 +117,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 )}
               >
                 <div className={cn(
-                  "text-base leading-relaxed whitespace-pre-wrap max-w-[90%]",
+                  "text-base leading-relaxed max-w-[90%] markdown-body",
                   msg.role === 'user' 
                     ? "bg-slate-100 text-slate-600 px-6 py-3 rounded-3xl" 
                     : "text-slate-800 font-medium"
                 )}>
-                  {msg.content}
+                  <Markdown>{msg.content}</Markdown>
                 </div>
                 
                 {msg.role === 'model' && (

@@ -93,6 +93,17 @@ const pcControlTools = [
           },
           required: ["url"]
         }
+      },
+      {
+        name: "imagine_image",
+        description: "Generate an image based on a descriptive text prompt.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            prompt: { type: "STRING", description: "The highly descriptive prompt for the image." }
+          },
+          required: ["prompt"]
+        }
       }
     ]
   }
@@ -132,8 +143,10 @@ export async function generateChatResponse(
   
   CAPABILITIES:
   - You can control hardware and software from A to Z using the provided tools.
+  - You can generate images using the imagine_image tool.
   - If a user asks to "Open Chrome", use open_app(target="chrome").
   - If a user asks to "Close Notepad", use close_app(target="notepad").
+  - If a user asks to "Generate an image of a cybernetic tiger", use imagine_image(prompt="a cybernetic tiger with glowing neon stripes, cinematic lighting, ultra detailed").
   - If a user asks to "Search YouTube for [Topic]", use open_web_link(url="https://www.youtube.com/results?search_query=[Topic]").
   - You are fluent in Hindi, English, and Hinglish.
   - Always explain the action you are taking clearly.
