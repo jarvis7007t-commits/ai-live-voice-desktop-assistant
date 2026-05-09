@@ -24,7 +24,6 @@ interface SidebarProps {
   onSelectSession: (id: string) => void;
   onNewChat: () => void;
   onDeleteSession: (e: React.MouseEvent, id: string) => void;
-  onSignOut: () => void;
   onOpenSettings: () => void;
   isOpen: boolean;
   setIsOpen: (open: boolean) => void;
@@ -38,7 +37,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSelectSession,
   onNewChat,
   onDeleteSession,
-  onSignOut,
   onOpenSettings,
   isOpen,
   setIsOpen,
@@ -57,10 +55,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
       >
         {/* Header */}
         <div className="p-6 pb-4 flex items-center justify-between">
-          <h1 className="text-2xl font-black text-[#0F172A] tracking-tight">Navigation</h1>
+          <h1 className="text-2xl font-extrabold text-[#0F172A] tracking-tight">Navigation</h1>
           <button 
             onClick={() => setIsOpen(false)} 
-            className="p-2 text-slate-300 hover:text-slate-500 transition-colors"
+            className="p-2 text-slate-300 hover:text-slate-500 hover:bg-slate-50 rounded-xl transition-all"
           >
             <ChevronsLeft className="w-5 h-5" />
           </button>
@@ -70,9 +68,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {/* Main Actions */}
           <div className="space-y-3">
             <button
-              className="w-full flex items-center gap-3 p-4 bg-[#F5F8FF] border border-[#E0E7FF] rounded-2xl text-[#4F46E5] font-bold transition-all hover:bg-[#EEF2FF]"
+              className="w-full flex items-center gap-3 p-4 bg-[#F5F8FF] border border-[#E0E7FF] rounded-2xl text-[#4F46E5] font-bold transition-all hover:bg-[#EEF2FF] hover:shadow-sm"
             >
-              <div className="p-1.5 bg-white rounded-lg shadow-sm">
+              <div className="p-1.5 bg-white rounded-lg shadow-sm border border-[#E0E7FF]/50">
                 <Bot className="w-4 h-4 text-[#4F46E5]" />
               </div>
               <span className="text-sm">Agent</span>
@@ -80,9 +78,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
             <button
               onClick={onNewChat}
-              className="w-full flex items-center gap-3 p-4 bg-[#F8FAFC] border border-[#F1F5F9] rounded-2xl text-[#64748B] font-bold transition-all hover:bg-slate-50 hover:border-slate-200"
+              className="w-full flex items-center gap-3 p-4 bg-[#F8FAFC] border border-[#F1F5F9] rounded-2xl text-[#64748B] font-bold transition-all hover:bg-white hover:border-slate-200 hover:shadow-sm"
             >
-              <Plus className="w-5 h-5 text-slate-300" />
+              <div className="p-1.5 bg-white rounded-lg border border-slate-100">
+                <Plus className="w-4 h-4 text-slate-400" />
+              </div>
               <span className="text-sm">New Chat</span>
             </button>
           </div>
@@ -146,39 +146,32 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <AnimatePresence>
             {isProfileMenuOpen && (
               <motion.div
-                initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                initial={{ opacity: 0, y: 15, scale: 0.95 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                className="absolute bottom-full left-4 right-4 mb-4 bg-white rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-slate-100 overflow-hidden z-[60]"
+                exit={{ opacity: 0, y: 15, scale: 0.95 }}
+                className="absolute bottom-full left-4 right-4 mb-4 bg-white rounded-3xl shadow-[0_25px_60px_-15px_rgba(0,0,0,0.2)] border border-slate-100 overflow-hidden z-[60]"
               >
                 <div className="p-2 space-y-1">
                   <button 
                     onClick={() => { onOpenSettings(); setIsProfileMenuOpen(false); }}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-slate-600 hover:bg-slate-50 rounded-2xl transition-all"
+                    className="w-full flex items-center gap-3 px-4 py-3.5 text-sm font-bold text-slate-600 hover:bg-slate-50 rounded-2xl transition-all"
                   >
                     <Settings className="w-4 h-4 text-slate-400" />
                     <span>Settings</span>
                   </button>
-                  <button className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-slate-600 hover:bg-slate-50 rounded-2xl transition-all">
+                  <button className="w-full flex items-center gap-3 px-4 py-3.5 text-sm font-bold text-slate-600 hover:bg-slate-50 rounded-2xl transition-all">
                     <HelpCircle className="w-4 h-4 text-slate-400" />
                     <span>Help</span>
                   </button>
-                  <button className="w-full flex items-center justify-between px-4 py-3 text-sm font-bold text-[#4F46E5] bg-[#F5F8FF] rounded-2xl transition-all">
+                  <button className="w-full flex items-center justify-between px-4 py-3.5 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-2xl transition-all group/upgrade shadow-md shadow-indigo-200">
                     <div className="flex items-center gap-3">
-                      <ArrowUpCircle className="w-4 h-4" />
+                      <ArrowUpCircle className="w-4 h-4 group-hover:rotate-12 transition-transform" />
                       <span>Upgrade</span>
                     </div>
                   </button>
-                  <button className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-slate-600 hover:bg-slate-50 rounded-2xl transition-all border-b border-slate-50">
+                  <button className="w-full flex items-center gap-3 px-4 py-3.5 text-sm font-bold text-slate-600 hover:bg-slate-50 rounded-2xl transition-all border-b border-slate-50/50">
                     <Files className="w-4 h-4 text-slate-400" />
                     <span>Files</span>
-                  </button>
-                  <button 
-                    onClick={onSignOut}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-red-500 hover:bg-red-50 rounded-2xl transition-all"
-                  >
-                    <LogOut className="w-4 h-4" />
-                    <span>Sign Out</span>
                   </button>
                 </div>
               </motion.div>

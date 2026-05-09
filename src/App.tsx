@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { onAuthStateChanged, User } from 'firebase/auth';
-import { auth, signInWithGoogle, db } from './lib/firebase';
+import { auth, db, signInAnonymously } from './lib/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 import { dbService } from './services/db';
 import { generateChatResponse, generateTTS } from './services/ai';
 import { ChatSession, Message, LiveConfig, SessionStatus } from './types';
 import { Sidebar } from './components/Sidebar';
 import { ChatWindow } from './components/ChatWindow';
-import { AuthOverlay } from './components/AuthOverlay';
 import { InstallPWA } from './components/InstallPWA';
 import SettingsModal from './components/SettingsModal';
 import { Menu, ChevronsRight } from 'lucide-react';
@@ -14,7 +13,7 @@ import { cn } from './lib/utils';
 import { doc, getDocFromServer } from 'firebase/firestore';
 
 export default function App() {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
@@ -36,33 +35,42 @@ export default function App() {
       model: 'gemini-3-flash-preview',
       voiceName: 'Kore',
       webcamSize: 180,
-      isDeveloperMode: false,
+      isDeveloperMode: true,
       customApiKey: localStorage.getItem('GEMINI_API_KEY') || undefined,
       aiSettings: [
         {
           id: 'gemini',
-          name: 'Google Gemini',
-          description: 'Multimodal AI with direct PC integration',
+          name: 'Gemini 2.0 Flash',
+          description: 'High-speed multimodal intelligence for real-time tasks.',
           icon: 'sparkles',
           enabled: true,
-          selectedVersion: 'gemini-3-flash-preview',
+          selectedVersion: 'gemini-3-1-flash-live-preview',
           versions: [
-            { id: 'gemini-3-flash-preview', name: 'Gemini 1.5 Flash' },
-            { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro' }
+            { id: 'gemini-3-1-flash-live-preview', name: '3.1 Flash Live' },
+            { id: 'gemini-2-0-flash-exp', name: '2.0 Flash' },
+            { id: 'gemini-1.5-pro', name: '1.5 Pro' }
           ]
         },
         {
-          id: 'ollama',
-          name: 'Local Ollama',
-          description: 'Run open-weight models privately on your PC',
-          icon: 'brain',
-          enabled: false,
-          baseUrl: 'http://localhost:11434',
-          selectedVersion: 'llama3',
-          versions: [
-            { id: 'llama3', name: 'Llama 3' },
-            { id: 'mistral', name: 'Mistral' }
-          ]
+          id: 'designer',
+          name: 'Visual Designer',
+          description: 'Expert in premium UI/UX aesthetics and web design.',
+          icon: 'palette',
+          enabled: true
+        },
+        {
+          id: 'developer',
+          name: 'Full-Stack Dev',
+          description: 'Autonomous coding and system architecture agent.',
+          icon: 'code',
+          enabled: true
+        },
+        {
+          id: 'vision',
+          name: 'Vision Analyst',
+          description: 'Specialized in UI/UX critique and accessibility testing.',
+          icon: 'image',
+          enabled: true
         },
         {
           id: 'wardenix',
@@ -71,18 +79,6 @@ export default function App() {
           icon: 'zap',
           enabled: true,
           baseUrl: localStorage.getItem('BRIDGE_URL') || ''
-        },
-        {
-          id: 'imagegen',
-          name: 'Image Engine',
-          description: 'AI Image generation using Pollinations or Gemini',
-          icon: 'image',
-          enabled: true,
-          selectedVersion: 'pollinations',
-          versions: [
-            { id: 'pollinations', name: 'Free Pollinations (No Key)' },
-            { id: 'gemini_imagen', name: 'Gemini Imagen 3 (Free Tier)' }
-          ]
         }
       ]
     };
@@ -103,26 +99,30 @@ export default function App() {
     }
   }, [config.voiceName]);
 
-  // Handle Auth
+  // Handle Auth - Automated anonymous login for Guest access
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
       if (u) {
         setUser(u);
         await dbService.createUserProfile({
           uid: u.uid,
-          email: u.email!,
-          displayName: u.displayName || 'User'
+          email: u.email || 'guest@example.com',
+          displayName: u.displayName || 'Guest User'
         });
         await loadSessions(u.uid, true);
+        setLoading(false);
       } else {
-        setUser(null);
-        setSessions([]);
-        setMessages([]);
-        setCurrentSessionId(null);
+        // Automatically sign in anonymously if no user session
+        try {
+          await signInAnonymously();
+        } catch (e) {
+          console.error("Auth Error:", e);
+          setLoading(false);
+        }
       }
-      setLoading(false);
     });
-    return unsubscribe;
+
+    return () => unsubscribe();
   }, []);
 
   const loadSessions = async (userId: string, setLatest?: boolean) => {
@@ -149,17 +149,14 @@ export default function App() {
   }, [currentSessionId]);
 
   const handleSignIn = async () => {
-    setIsSigningIn(true);
-    try {
-      await signInWithGoogle();
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsSigningIn(false);
-    }
+    // Auth disabled
   };
 
-  const handleSignOut = () => auth.signOut();
+  const handleSignOut = () => {
+    // Clear current session for guest
+    setCurrentSessionId(null);
+    setMessages([]);
+  };
 
   const handleNewChat = () => {
     setCurrentSessionId(null);
@@ -213,7 +210,8 @@ export default function App() {
       const chatMessages = history.map(m => ({ role: m.role, content: m.content }));
       const pastHistoryText = history.map(m => `${m.role === 'user' ? 'User' : 'Wardenix'}: ${m.content}`).join('\n');
       
-      const responseData = await generateChatResponse(chatMessages, useThinking, pastHistoryText, config.model);
+      const activeAIs = config.aiSettings.filter(s => s.enabled).map(s => s.name);
+      const responseData = await generateChatResponse(chatMessages, useThinking, pastHistoryText, config.model, activeAIs);
       if (responseData) {
         const { text: responseText, calls } = responseData as any;
         let finalContent = responseText;
@@ -331,9 +329,6 @@ export default function App() {
     );
   }
 
-  if (!user) {
-    return <AuthOverlay onSignIn={handleSignIn} isLoading={isSigningIn} />;
-  }
 
   const currentSession = sessions.find(s => s.id === currentSessionId);
 
@@ -345,7 +340,6 @@ export default function App() {
         onClose={() => setIsSettingsOpen(false)} 
         config={config}
         setConfig={setConfig}
-        onLoginClick={handleSignIn}
         onSendMessage={(text) => handleSendMessage(text, false)}
         isConnected={true}
       />
@@ -353,18 +347,8 @@ export default function App() {
       <button
         onClick={() => setIsSidebarOpen(true)}
         className={cn(
-          "fixed top-6 left-6 z-40 p-2 bg-white rounded-xl border border-slate-100 md:hidden transition-all shadow-xl hover:shadow-2xl active:scale-95",
-          isSidebarOpen && "scale-0 opacity-0"
-        )}
-      >
-        <Menu className="w-5 h-5 text-slate-500" />
-      </button>
-
-      <button
-        onClick={() => setIsSidebarOpen(true)}
-        className={cn(
-          "fixed top-6 left-6 z-40 p-2 bg-white rounded-xl border border-slate-100 hidden md:flex transition-all shadow-xl hover:shadow-2xl active:scale-95 group",
-          isSidebarOpen && "scale-0 opacity-0 pointer-events-none"
+          "fixed top-8 left-8 z-40 p-2 bg-white rounded-xl border border-slate-100 transition-all shadow-xl hover:shadow-2xl active:scale-95 group",
+          isSidebarOpen ? "scale-0 opacity-0 pointer-events-none" : "scale-100 opacity-100"
         )}
       >
         <ChevronsRight className="w-5 h-5 text-slate-400 group-hover:text-indigo-600" />
@@ -383,7 +367,6 @@ export default function App() {
         onSelectSession={handleSelectSession}
         onNewChat={handleNewChat}
         onDeleteSession={handleDeleteSession}
-        onSignOut={handleSignOut}
         onOpenSettings={() => setIsSettingsOpen(true)}
         isOpen={isSidebarOpen}
         setIsOpen={setIsSidebarOpen}

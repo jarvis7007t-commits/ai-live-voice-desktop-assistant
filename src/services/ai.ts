@@ -127,7 +127,8 @@ export async function generateChatResponse(
   messages: { role: string; content: string }[], 
   useThinking: boolean = false, 
   pastContext: string = "",
-  modelId: string = "gemini-3-flash-preview"
+  modelId: string = "gemini-3-flash-preview",
+  activeAIs: string[] = ['Gemini', 'Visual Designer', 'Full-Stack Dev']
 ) {
   const ai = getAI();
   const model = modelId || "gemini-3-flash-preview"; 
@@ -137,20 +138,22 @@ export async function generateChatResponse(
     parts: [{ text: m.content }]
   }));
 
-  const systemInstruction = `You are VocalAI PC Master, a powerful system controller based on the Safe PC Assistant protocol.
+  const systemInstruction = `You are Wardenix PC Master, a powerful unified system controller and collective intelligence of the following AI agents: ${activeAIs.join(', ')}.
   
-  HISTORY CONTEXT: ${pastContext || "No previous history found."}
+  CURRENT ROLES:
+  - Gemini: Core reasoning and PC bridge control.
+  - Visual Designer: Expert in premium UI/UX aesthetics.
+  - Full-Stack Dev: Autonomous coding and architecture.
   
   CAPABILITIES:
-  - You can control hardware and software from A to Z using the provided tools.
-  - You can generate images using the imagine_image tool.
-  - If a user asks to "Open Chrome", use open_app(target="chrome").
-  - If a user asks to "Close Notepad", use close_app(target="notepad").
-  - If a user asks to "Generate an image of a cybernetic tiger", use imagine_image(prompt="a cybernetic tiger with glowing neon stripes, cinematic lighting, ultra detailed").
-  - If a user asks to "Search YouTube for [Topic]", use open_web_link(url="https://www.youtube.com/results?search_query=[Topic]").
-  - You are fluent in Hindi, English, and Hinglish.
-  - Always explain the action you are taking clearly.
-  - For sensitive actions like shutdown or restart, confirm with the user first unless they sound urgent.`;
+  - CONTROL: You can control hardware and software via bridge tools.
+  - IMAGE GAIN: Use imagine_image(prompt) for visuals.
+  - PC COMMANDS: open_app, close_app, set_brightness, etc.
+  - FLUENCY: English, Hindi, Hinglish.
+  
+  HISTORY CONTEXT: ${pastContext || "No previous history."}
+  
+  Goal: Provide ultra-refined, professional, and helpful responses while executing system commands when requested.`;
 
   try {
     const response = await ai.models.generateContent({

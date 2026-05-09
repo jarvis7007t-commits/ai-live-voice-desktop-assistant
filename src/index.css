@@ -63,10 +63,63 @@
     margin-bottom: 1rem;
   }
 
-  .markdown-body h1, .markdown-body h2, .markdown-body h3 {
-    margin-top: 1rem;
-    margin-bottom: 0.5rem;
-    font-weight: bold;
+  /* Lumina Capsule Design System */
+  .lumina-capsule {
+    position: relative;
+    width: 360px;
+    height: 56px;
+    border-radius: 999px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+    background: #10141d;
+    z-index: 10;
+    transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    flex-shrink: 0;
+    box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.3);
+  }
+
+  .section-vortex {
+    position: relative;
+    width: 48px;
+    height: 48px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    border-radius: 50%;
+    background: transparent;
+    flex-shrink: 0;
+    overflow: hidden;
+    transition: all 0.2s ease-in-out;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .section-vortex:hover {
+    background: rgba(255, 255, 255, 0.05);
+    transform: scale(1.05);
+  }
+
+  .vortex-glow {
+    position: absolute;
+    inset: 4px;
+    background: radial-gradient(circle, rgba(34, 211, 238, 0.5) 0%, transparent 70%);
+    border-radius: 50%;
+    opacity: 0;
+    transition: opacity 0.5s ease;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .icon-active-cyan { color: #22d3ee; }
+  .icon-inactive { color: #64748b; }
+  .icon-active-red { color: #ef4444; }
+
+  @keyframes pulse-glow {
+    0%, 100% { opacity: 0.3; transform: scale(1); }
+    50% { opacity: 0.6; transform: scale(1.1); }
   }
 }
 

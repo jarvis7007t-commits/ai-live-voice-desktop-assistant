@@ -8,7 +8,6 @@ interface SettingsModalProps {
   onClose: () => void;
   config: LiveConfig;
   setConfig: React.Dispatch<React.SetStateAction<LiveConfig>>;
-  onLoginClick: () => void;
   onSendMessage: (text: string) => void;
   isConnected: boolean;
 }
@@ -18,7 +17,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   onClose, 
   config,
   setConfig,
-  onLoginClick,
   onSendMessage,
   isConnected
 }) => {
@@ -119,23 +117,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
       >
         {/* Drag Handle Area */}
         <div className="absolute top-0 left-0 right-0 h-10 cursor-move z-0" />
-        {/* Top Header with Auth Buttons */}
+        {/* Top Header */}
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-xl font-bold text-slate-900">Settings</h1>
-          <div className="flex gap-3">
-            <button 
-              onClick={onLoginClick}
-              className="bg-[#6b21a8] text-white px-5 py-2 rounded-lg font-bold text-sm hover:bg-[#581c87] transition-all active:scale-95"
-            >
-              Register
-            </button>
-            <button 
-              onClick={onLoginClick}
-              className="bg-slate-50 text-slate-700 px-5 py-2 rounded-lg font-bold text-sm hover:bg-slate-100 transition-all border border-slate-200 active:scale-95"
-            >
-              Sign In
-            </button>
-          </div>
         </div>
 
         {/* Close Button */}
