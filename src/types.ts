@@ -1,38 +1,39 @@
 
-export interface ChatSession {
-  id: string;
-  userId: string;
-  title: string;
-  createdAt: any;
+export interface TranscriptionEntry {
+  role: 'user' | 'model';
+  text: string;
 }
 
-export interface Message {
-  id: string;
-  sessionId: string;
-  role: 'user' | 'model' | 'system';
-  content: string;
-  createdAt: any;
+export enum SessionStatus {
+  IDLE = 'IDLE',
+  CONNECTING = 'CONNECTING',
+  CONNECTED = 'CONNECTED',
+  ERROR = 'ERROR',
+  SETTINGS = 'SETTINGS',
+  AUTH = 'AUTH',
 }
 
 export interface AISetting {
   id: string;
   name: string;
   description: string;
-  icon: string;
   enabled: boolean;
+  icon: string;
+  apiKey?: string;
+  versions?: { id: string; name: string }[];
   selectedVersion?: string;
-  baseUrl?: string;
 }
 
 export interface LiveConfig {
   model: string;
-  voiceName: 'Puck' | 'Charon' | 'Kore' | 'Fenrir' | 'Zephyr' | 'Aoede';
-  customApiKey?: string;
-  aiSettings: AISetting[];
+  systemInstruction?: string;
+  voiceName: 'Puck' | 'Charon' | 'Kore' | 'Fenrir' | 'Zephyr';
   isCameraEnabled: boolean;
   isScreenEnabled: boolean;
   isMuted: boolean;
   isMouseMode: boolean;
+  aiSettings: AISetting[];
+  // New features based on image and request
   recordingQuality: 'SD' | 'HD' | '4K';
   instantShareLink: boolean;
   highlightMouseCursor: boolean;
@@ -48,11 +49,12 @@ export interface LiveConfig {
   webcamSize: number;
   language: string;
   isDeveloperMode: boolean;
+  isChatWindowOpen: boolean;
+  customApiKey?: string;
 }
 
 export interface UserProfile {
-  uid: string;
   email: string;
-  displayName: string;
-  photoURL?: string;
+  name: string;
+  isLoggedIn: boolean;
 }

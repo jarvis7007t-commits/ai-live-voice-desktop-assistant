@@ -1,234 +1,205 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Mic, Paperclip, Loader2, Volume2, User, Sparkles, Copy, Share2, ThumbsUp } from 'lucide-react';
-import { Message } from '../types';
-import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
-import Visualizer from './Visualizer';
-import Markdown from 'react-markdown';
+import { X, Send, Image as ImageIcon, FileUp, Play, User, Bot, Paperclip } from 'lucide-react';
 
-interface ChatWindowProps {
-  messages: Message[];
-  onSendMessage: (text: string, useThinking: boolean, attachments?: File[]) => Promise<string | null>;
-  onSpeak: (text: string) => void;
-  onVoiceInput: (text: string) => void;
-  isLoading: boolean;
-  isSpeaking: boolean;
-  sessionTitle: string;
-  displayName: string;
-  photoURL?: string;
-  isLiveMode: boolean;
-  onToggleLiveMode: (val: boolean) => void;
-  selectedVoice: string;
-  onVoiceChange: (voice: any) => void;
+interface Message {
+  id: string;
+  role: 'user' | 'bot';
+  text: string;
+  timestamp: Date;
+  attachments?: { name: string; type: string; url: string }[];
 }
 
-export const ChatWindow: React.FC<ChatWindowProps> = ({
-  messages,
-  onSendMessage,
-  onSpeak,
-  onVoiceInput,
-  isLoading,
-  isSpeaking,
-  sessionTitle,
-  displayName,
-  photoURL,
-  isLiveMode,
-  onToggleLiveMode,
-  selectedVoice,
-  onVoiceChange
-}) => {
+interface ChatWindowProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSendMessage: (text: string) => void;
+  onSpeak: (text: string) => void;
+  isConnected: boolean;
+}
+
+const ChatWindow: React.FC<ChatWindowProps> = ({ isOpen, onClose, onSendMessage, onSpeak, isConnected }) => {
+  const [messages, setMessages] = useState<Message[]>([
+    { id: '1', role: 'bot', text: 'Wardenix Terminal Online. How can I assist you today?', timestamp: new Date() }
+  ]);
   const [input, setInput] = useState('');
-  const [isThinking, setIsThinking] = useState(false);
+  const [attachments, setAttachments] = useState<{ name: string; type: string; url: string }[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, isLoading]);
+  }, [messages]);
 
-  const handleSend = async () => {
-    if (!input.trim() || isLoading) return;
-    const text = input;
+  const handleSend = (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!input.trim() && attachments.length === 0) return;
+
+    const newMessage: Message = {
+      id: Date.now().toString(),
+      role: 'user',
+      text: input,
+      timestamp: new Date(),
+      attachments: attachments.length > 0 ? [...attachments] : undefined
+    };
+
+    setMessages(prev => [...prev, newMessage]);
+    onSendMessage(input);
     setInput('');
-    await onSendMessage(text, isThinking);
+    setAttachments([]);
+
+    // Simulate bot response for demo (in real app, this comes from the session)
+    if (isConnected) {
+      // The actual response will come through the sessionRef in App.tsx
+    }
   };
 
-  return (
-    <div className="flex-1 flex flex-col h-full bg-[#FCFDFF]">
-      {/* Header */}
-      {messages.length > 0 && (
-        <div className="h-16 border-b border-slate-100 flex items-center justify-between px-6 bg-white/80 backdrop-blur-md sticky top-0 z-30">
-          <div className="flex items-center gap-3">
-            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-            <h2 className="text-sm font-bold text-slate-700 truncate max-w-[200px]">{sessionTitle}</h2>
-          </div>
-          
-          <div className="flex items-center gap-2">
-            {isSpeaking && (
-              <div className="bg-indigo-600/10 px-3 py-1 rounded-full flex items-center gap-2">
-                <Visualizer isActive={true} isUserTalking={false} isModelTalking={true} />
-                <span className="text-[10px] font-bold text-indigo-600 animate-pulse uppercase tracking-widest font-mono">Speaking</span>
-              </div>
-            )}
-            <div className="hidden sm:flex items-center gap-2 bg-slate-50 border border-slate-100 rounded-lg px-3 py-1.5">
-              <User className="w-3.5 h-3.5 text-slate-400" />
-              <span className="text-[11px] font-bold text-slate-500">{displayName}</span>
-            </div>
-          </div>
-        </div>
-      )}
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files) {
+      const newFiles = Array.from(files).map((file: File) => ({
+        name: file.name,
+        type: file.type,
+        url: URL.createObjectURL(file)
+      }));
+      setAttachments(prev => [...prev, ...newFiles]);
+    }
+  };
 
-      {/* Messages */}
-      <div ref={scrollRef} className={cn("flex-1 overflow-y-auto custom-scrollbar", messages.length === 0 ? "flex items-center justify-center" : "p-4 md:p-8 space-y-6")}>
-        {messages.length === 0 && !isLoading ? (
-          <div className="flex flex-col items-center justify-center text-center space-y-8 animate-in fade-in zoom-in duration-700">
-            <div className="relative">
-              <div className="absolute -inset-4 bg-indigo-500/10 blur-3xl rounded-full animate-pulse" />
-              {photoURL ? (
-                <img 
-                  src={photoURL} 
-                  alt={displayName} 
-                  className="w-32 h-32 rounded-full object-cover border-4 border-white shadow-2xl relative z-10" 
-                  referrerPolicy="no-referrer"
-                />
-              ) : (
-                <div className="w-32 h-32 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-500 font-black text-4xl border-4 border-white shadow-2xl relative z-10">
-                  {displayName.charAt(0)}
+  if (!isOpen) return null;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: 100 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 100 }}
+      drag
+      dragMomentum={false}
+      className="fixed right-10 top-20 w-[400px] h-[600px] bg-[#0a0c10] border border-slate-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden z-[60]"
+      style={{ WebkitAppRegion: 'no-drag' } as any}
+    >
+      {/* Header */}
+      <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-[#0d1117] cursor-move">
+        <div className="flex items-center gap-3">
+          <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+          <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Wardenix Terminal</span>
+        </div>
+        <button onClick={onClose} className="text-slate-500 hover:text-white transition-colors">
+          <X size={18} />
+        </button>
+      </div>
+
+      {/* Messages Area */}
+      <div 
+        ref={scrollRef}
+        className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-[radial-gradient(circle_at_center,rgba(34,211,238,0.03)_0%,transparent_100%)]"
+      >
+        {messages.map((msg) => (
+          <div key={msg.id} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+            <div className={`flex items-center gap-2 mb-1 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+              <div className={`w-6 h-6 rounded-full flex items-center justify-center ${msg.role === 'user' ? 'bg-blue-600' : 'bg-slate-800'}`}>
+                {msg.role === 'user' ? <User size={12} className="text-white" /> : <Bot size={12} className="text-blue-400" />}
+              </div>
+              <span className="text-[10px] font-bold text-slate-500 uppercase">{msg.role}</span>
+            </div>
+            
+            <div className={`max-w-[85%] p-3 rounded-2xl text-sm ${
+              msg.role === 'user' 
+                ? 'bg-blue-600/10 border border-blue-500/20 text-blue-100 rounded-tr-none' 
+                : 'bg-slate-900 border border-slate-800 text-slate-300 rounded-tl-none'
+            }`}>
+              {msg.text}
+              
+              {msg.attachments && (
+                <div className="mt-2 space-y-2">
+                  {msg.attachments.map((file, i) => (
+                    <div key={i} className="flex items-center gap-2 p-2 bg-black/20 rounded-lg border border-white/5">
+                      {file.type.startsWith('image/') ? (
+                        <img src={file.url} alt={file.name} className="w-10 h-10 rounded object-cover" />
+                      ) : (
+                        <Paperclip size={14} className="text-slate-400" />
+                      )}
+                      <span className="text-[10px] truncate flex-1">{file.name}</span>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
-            
-            <div className="space-y-2 relative z-10">
-              <h3 className="text-4xl md:text-5xl font-black text-[#0F172A] tracking-tight">Hi, I am {displayName}!</h3>
-              <p className="text-sm md:text-base font-bold text-slate-400">Multifaceted Smart Assistant</p>
-            </div>
-          </div>
-        ) : (
-          <div className="max-w-4xl mx-auto w-full space-y-12">
-            {messages.map((msg, i) => (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                key={msg.id || i}
-                className={cn(
-                  "flex flex-col gap-3",
-                  msg.role === 'user' ? "items-end" : "items-start"
-                )}
-              >
-                <div className={cn(
-                  "text-base leading-relaxed max-w-[90%] markdown-body",
-                  msg.role === 'user' 
-                    ? "bg-slate-100 text-slate-600 px-6 py-3 rounded-3xl" 
-                    : "text-slate-800 font-medium"
-                )}>
-                  <Markdown>{msg.content}</Markdown>
-                </div>
-                
-                {msg.role === 'model' && (
-                  <div className="flex items-center gap-4 px-1">
-                    <button className="p-1 text-slate-300 hover:text-slate-500 transition-colors" title="Copy">
-                      <Copy className="w-4 h-4" />
-                    </button>
-                    <button className="p-1 text-slate-300 hover:text-slate-500 transition-colors" title="Share休">
-                      <Share2 className="w-4 h-4" />
-                    </button>
-                    <button className="p-1 text-slate-300 hover:text-slate-500 transition-colors" title="Like">
-                      <ThumbsUp className="w-4 h-4" />
-                    </button>
-                    <button 
-                      onClick={() => onSpeak(msg.content)}
-                      className={cn(
-                        "p-1 transition-all",
-                        isSpeaking ? "text-indigo-600" : "text-slate-300 hover:text-indigo-600"
-                      )}
-                      title="Speak"
-                    >
-                      <Volume2 className={cn("w-4 h-4", isSpeaking && "animate-pulse")} />
-                    </button>
-                  </div>
-                )}
-              </motion.div>
-            ))}
-          </div>
-        )}
 
-        {isLoading && (
-          <div className="max-w-4xl mx-auto w-full flex gap-2 items-center text-slate-400 p-4">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            <span className="text-xs font-medium italic">Wardenix is thinking...</span>
+            {msg.role === 'bot' && (
+              <button 
+                onClick={() => onSpeak(msg.text)}
+                className="mt-2 flex items-center gap-1.5 text-[10px] font-bold text-blue-500 hover:text-blue-400 transition-colors bg-blue-500/5 px-2 py-1 rounded-full border border-blue-500/10"
+              >
+                <Play size={10} fill="currentColor" />
+                LISTEN AI RESPONSE
+              </button>
+            )}
           </div>
-        )}
+        ))}
       </div>
 
       {/* Input Area */}
-      <div className={cn("p-4 md:p-8 relative", messages.length === 0 ? "pb-20" : "pt-0")}>
-        <div className="max-w-4xl mx-auto flex flex-col items-center">
-          <div className={cn(
-            "relative w-full max-w-3xl flex items-center bg-white border-[1.5px] rounded-full p-1.5 transition-all group",
-            messages.length === 0 
-              ? "border-[#D1D5FF] shadow-[0_0_20px_rgba(209,213,255,0.4)]" 
-              : "border-slate-200 focus-within:border-[#D1D5FF] focus-within:shadow-[0_0_15px_rgba(209,213,255,0.3)]"
-          )}>
-            <div className="flex items-center gap-1 pl-4 pr-2">
-              <button className="p-2 text-slate-300 hover:text-slate-500 transition-colors">
-                <Paperclip className="w-5 h-5 stroke-[1.5]" />
-              </button>
-            </div>
-            
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSend();
-                }
-              }}
-              placeholder="Search..."
-              className="flex-1 bg-transparent border-none focus:ring-0 text-base py-3 h-11 resize-none placeholder:text-slate-300 font-medium overflow-hidden"
-              rows={1}
-            />
-            
-            <div className="flex items-center gap-3 pr-2">
-              <button className="p-2 text-slate-300 hover:text-slate-500 transition-colors border-r border-slate-100 pr-4">
-                <Mic className="w-5 h-5 stroke-[1.5]" />
-              </button>
-              
-              <button
-                onClick={handleSend}
-                disabled={!input.trim() || isLoading}
-                className={cn(
-                  "w-12 h-12 bg-[#0F172A] text-white rounded-full flex items-center justify-center transition-all shadow-lg active:scale-95 disabled:bg-slate-100 disabled:text-slate-300",
-                  isSpeaking && "bg-indigo-600"
-                )}
-              >
-                {isLoading ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : isSpeaking ? (
-                  <div className="flex gap-0.5 items-center">
-                    <div className="w-1 h-3 bg-white rounded-full animate-bounce [animation-delay:-0.3s]" />
-                    <div className="w-1 h-4 bg-white rounded-full animate-bounce [animation-delay:-0.15s]" />
-                    <div className="w-1 h-3 bg-white rounded-full animate-bounce" />
-                  </div>
-                ) : (
-                  <div className="flex gap-0.5 items-center">
-                    <div className="w-0.5 h-3 bg-white/40 rounded-full" />
-                    <div className="w-0.5 h-4 bg-white rounded-full" />
-                    <div className="w-0.5 h-6 bg-white rounded-full" />
-                    <div className="w-0.5 h-4 bg-white rounded-full" />
-                    <div className="w-0.5 h-3 bg-white/40 rounded-full" />
-                  </div>
-                )}
-              </button>
-            </div>
+      <div className="p-4 bg-[#0d1117] border-t border-slate-800">
+        {attachments.length > 0 && (
+          <div className="flex gap-2 mb-3 overflow-x-auto pb-2 custom-scrollbar">
+            {attachments.map((file, i) => (
+              <div key={i} className="relative group shrink-0">
+                <div className="w-12 h-12 rounded-lg border border-slate-700 bg-slate-800 flex items-center justify-center overflow-hidden">
+                  {file.type.startsWith('image/') ? (
+                    <img src={file.url} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <Paperclip size={16} className="text-slate-400" />
+                  )}
+                </div>
+                <button 
+                  onClick={() => setAttachments(prev => prev.filter((_, idx) => idx !== i))}
+                  className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <X size={10} />
+                </button>
+              </div>
+            ))}
           </div>
+        )}
+        
+        <form onSubmit={handleSend} className="flex items-center gap-2">
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            onChange={handleFileChange} 
+            multiple 
+            className="hidden" 
+          />
+          <button 
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="p-2 text-slate-500 hover:text-blue-400 transition-colors"
+          >
+            <FileUp size={20} />
+          </button>
           
-          <div className="mt-4">
-            <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em] opacity-80">Personal AI Assistant</p>
-          </div>
-        </div>
+          <input 
+            type="text"
+            placeholder="Type command or message..."
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            className="flex-1 bg-slate-900/50 border border-slate-800 rounded-xl px-4 py-2 text-sm text-slate-300 focus:outline-none focus:border-blue-500/50 transition-all"
+          />
+          
+          <button 
+            type="submit"
+            disabled={!input.trim() && attachments.length === 0}
+            className="p-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all disabled:opacity-50 disabled:scale-95"
+          >
+            <Send size={18} />
+          </button>
+        </form>
       </div>
-    </div>
+    </motion.div>
   );
 };
+
+export default ChatWindow;
