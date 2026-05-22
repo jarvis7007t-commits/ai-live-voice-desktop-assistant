@@ -1,0 +1,64 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net default catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper Primitives & Functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Validation Blueprint for Google Keep Notes
+    function isValidNote(note) {
+      return note.userId is string 
+        && note.userId == request.auth.uid
+        && (note.title is string && note.title.size() <= 500)
+        && (note.content is string && note.content.size() <= 60000)
+        && (note.color is string && note.color.size() <= 64)
+        && (note.isPinned is bool)
+        && (note.isArchived is bool)
+        && (note.labels is list && note.labels.size() <= 20)
+        && (note.labels.size() == 0 || note.labels[0] is string);
+    }
+
+    // Collection routing for Keep Notes
+    match /keep_notes/{noteId} {
+      allow get: if isSignedIn() && isValidId(noteId) && existing().userId == request.auth.uid;
+      
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      
+      allow create: if isSignedIn() 
+        && isValidId(noteId) 
+        && isValidNote(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+        
+      allow update: if isSignedIn() 
+        && isValidId(noteId) 
+        && isValidNote(incoming())
+        && existing().userId == request.auth.uid
+        && incoming().updatedAt == request.time
+        && incoming().createdAt == existing().createdAt;
+        
+      allow delete: if isSignedIn() 
+        && isValidId(noteId) 
+        && existing().userId == request.auth.uid;
+    }
+  }
+}

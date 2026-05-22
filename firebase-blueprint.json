@@ -1,0 +1,60 @@
+{
+  "entities": {
+    "keep_notes": {
+      "title": "Google Keep Notes",
+      "description": "Keep notes persisted in Firestore, enabling categorization, labels, pinned sorting, color styling, and checklists.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "The unique document ID of the note"
+        },
+        "userId": {
+          "type": "string",
+          "description": "The Google User ID representing the owner of this note"
+        },
+        "title": {
+          "type": "string",
+          "description": "Heading or title of the note"
+        },
+        "content": {
+          "type": "string",
+          "description": "The text body or JSON string containing checklist items"
+        },
+        "color": {
+          "type": "string",
+          "description": "A tailwind-compatible color theme select for the card"
+        },
+        "isPinned": {
+          "type": "boolean",
+          "description": "True if the note card is prioritized/pinned at top"
+        },
+        "isArchived": {
+          "type": "boolean",
+          "description": "True if the note card is archived"
+        },
+        "labels": {
+          "type": "array",
+          "description": "A list of category classification strings"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server authenticated creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server authenticated last modification timestamp"
+        }
+      },
+      "required": ["userId", "title", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/keep_notes/{noteId}": {
+      "schema": "keep_notes",
+      "description": "Access points containing Keep Notes for individual users, restricted by request authentication owner ID"
+    }
+  }
+}

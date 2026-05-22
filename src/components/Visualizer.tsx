@@ -6,9 +6,10 @@ interface VisualizerProps {
   isUserTalking: boolean;
   isModelTalking: boolean;
   isMuted?: boolean;
+  analyzer?: AnalyserNode;
 }
 
-const Visualizer: React.FC<VisualizerProps> = ({ isActive, isUserTalking, isModelTalking, isMuted }) => {
+const Visualizer: React.FC<VisualizerProps> = ({ isActive, isUserTalking, isModelTalking, isMuted, analyzer }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -19,6 +20,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ isActive, isUserTalking, isMode
 
     let animationId: number;
     let frame = 0;
+    const dataArray = analyzer ? new Uint8Array(analyzer.frequencyBinCount) : null;
 
     const render = () => {
       frame++;
@@ -35,6 +37,16 @@ const Visualizer: React.FC<VisualizerProps> = ({ isActive, isUserTalking, isMode
         const totalWidth = numBars * (barWidth + barSpacing);
         const startX = (w - totalWidth) / 2;
         
+        let intensityData: number[] = [];
+        if (analyzer && dataArray) {
+          analyzer.getByteFrequencyData(dataArray);
+          // Map frequency data to our bars
+          for (let i = 0; i < numBars; i++) {
+            const index = Math.floor((i / numBars) * (dataArray.length / 2));
+            intensityData.push(dataArray[index] / 255);
+          }
+        }
+
         const baseIntensity = isUserTalking ? 12 : isModelTalking ? 14 : 2;
 
         for (let i = 0; i < numBars; i++) {
@@ -43,6 +55,11 @@ const Visualizer: React.FC<VisualizerProps> = ({ isActive, isUserTalking, isMode
           const falloff = 1 - (distFromCenter / (numBars / 1.5));
           
           let amplitude = baseIntensity * falloff;
+          
+          if (intensityData.length > 0) {
+            amplitude += intensityData[i] * 12;
+          }
+
           if (isUserTalking || isModelTalking) {
              amplitude *= (Math.sin(frame * 0.15 + i * 0.4) * 0.6 + 0.8);
           } else {
@@ -52,9 +69,13 @@ const Visualizer: React.FC<VisualizerProps> = ({ isActive, isUserTalking, isMode
           const barHeight = Math.max(2, amplitude);
           
           ctx.beginPath();
-          ctx.fillStyle = isUserTalking ? 'rgba(34, 211, 238, 0.8)' : 'rgba(255, 255, 255, 0.6)';
-          // Draw centered vertically
-          ctx.roundRect(x, midY - barHeight / 2, barWidth, barHeight, 1);
+          ctx.fillStyle = isUserTalking ? '#22d3ee' : isModelTalking ? '#ffffff' : 'rgba(255, 255, 255, 0.4)';
+          
+          if (ctx.roundRect) {
+            ctx.roundRect(x, midY - barHeight / 2, barWidth, barHeight, 1);
+          } else {
+            ctx.rect(x, midY - barHeight / 2, barWidth, barHeight);
+          }
           ctx.fill();
         }
       } else {

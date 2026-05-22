@@ -7,21 +7,28 @@
   "main": "electron.js",
   "type": "commonjs",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview",
+    "dev": "tsx server.ts",
+    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "start": "node dist/server.cjs",
     "lint": "tsc --noEmit",
     "electron:dev": "ELECTRON_START_URL=http://localhost:3000 electron .",
     "dist": "electron-builder"
   },
   "dependencies": {
     "@google/genai": "^1.38.0",
+    "@google/generative-ai": "^0.21.0",
     "@tailwindcss/vite": "^4.2.1",
+    "@types/express": "^5.0.6",
+    "axios": "^1.16.1",
+    "esbuild": "^0.28.0",
+    "express": "^5.2.1",
+    "firebase": "^12.13.0",
     "lucide-react": "^0.575.0",
     "motion": "^12.34.3",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
-    "tailwindcss": "^4.2.1"
+    "tailwindcss": "^4.2.1",
+    "tsx": "^4.22.2"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

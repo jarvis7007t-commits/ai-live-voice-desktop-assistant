@@ -406,13 +406,48 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                           
                           <div className="flex items-center gap-3">
                             {setting.enabled && hasVersions && (
-                              <button 
-                                onClick={() => setOpenVersionListId(isVersionListOpen ? null : setting.id)}
-                                className="p-2 rounded-lg bg-purple-100 text-purple-600 hover:bg-purple-200 transition-colors"
-                                title="Select Version"
-                              >
-                                <ChevronRight size={16} className={`transition-transform ${isVersionListOpen ? 'rotate-90' : ''}`} />
-                              </button>
+                              <div className="relative">
+                                <button 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setOpenVersionListId(isVersionListOpen ? null : setting.id);
+                                  }}
+                                  className="p-2 rounded-lg bg-purple-100 text-purple-600 hover:bg-purple-200 transition-colors"
+                                  title="Select Version"
+                                >
+                                  <ChevronRight size={16} className={`transition-transform duration-200 ${isVersionListOpen ? 'rotate-90' : ''}`} />
+                                </button>
+                                
+                                <AnimatePresence>
+                                  {isVersionListOpen && (
+                                    <motion.div
+                                      initial={{ opacity: 0, scale: 0.95, y: -10 }}
+                                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                                      exit={{ opacity: 0, scale: 0.95, y: -10 }}
+                                      transition={{ duration: 0.15 }}
+                                      className="absolute right-0 top-full mt-1.5 z-[100] w-52 bg-white border border-slate-200 rounded-xl shadow-xl p-1 origin-top-right whitespace-nowrap"
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      {setting.versions?.map((version) => (
+                                        <button
+                                          key={version.id}
+                                          onClick={() => {
+                                            selectVersion(setting.id, version.id);
+                                          }}
+                                          className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-between ${
+                                            setting.selectedVersion === version.id
+                                              ? 'bg-purple-600 text-white shadow-sm'
+                                              : 'bg-slate-50 text-slate-700 hover:bg-slate-100/80'
+                                          }`}
+                                        >
+                                          <span className="truncate mr-2">{version.name}</span>
+                                          {setting.selectedVersion === version.id && <Check size={12} className="shrink-0" />}
+                                        </button>
+                                      ))}
+                                    </motion.div>
+                                  )}
+                                </AnimatePresence>
+                              </div>
                             )}
                             <div 
                               className={`w-10 h-5 rounded-full relative transition-colors cursor-pointer ${
@@ -450,33 +485,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                                   className="w-full bg-slate-50 border border-slate-100 rounded-lg px-3 py-2 text-[10px] text-slate-600 placeholder:text-slate-300 focus:outline-none focus:border-purple-300 transition-all"
                                 />
                               </div>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-
-                        {/* Version List Dropdown */}
-                        <AnimatePresence>
-                          {isVersionListOpen && setting.enabled && (
-                            <motion.div
-                              initial={{ height: 0, opacity: 0 }}
-                              animate={{ height: 'auto', opacity: 1 }}
-                              exit={{ height: 0, opacity: 0 }}
-                              className="ml-14 space-y-1 overflow-hidden"
-                            >
-                              {setting.versions?.map((version) => (
-                                <button
-                                  key={version.id}
-                                  onClick={() => selectVersion(setting.id, version.id)}
-                                  className={`w-full text-left px-4 py-2 rounded-lg text-xs font-medium transition-all flex items-center justify-between ${
-                                    setting.selectedVersion === version.id
-                                      ? 'bg-purple-600 text-white shadow-sm'
-                                      : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
-                                  }`}
-                                >
-                                  {version.name}
-                                  {setting.selectedVersion === version.id && <Check size={12} />}
-                                </button>
-                              ))}
                             </motion.div>
                           )}
                         </AnimatePresence>

@@ -1,9 +1,9 @@
 {
-  "name": "Wardenix",
-  "description": "Wardenix is a powerful AI Assistant with specialized modules for Coding, Education, Health, Business, Content, Automation, and Security, featuring real-time voice and vision capabilities.",
+  "name": "Lumax AI - Wardenix Edition",
+  "description": "Lumax AI is a high-performance AI workspace integrated with the Wardenix Live Voice Assistant for multimodal system control and collaboration.",
   "requestFramePermissions": [
     "camera",
-    "microphone",
-    "display-capture"
-  ]
+    "microphone"
+  ],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
