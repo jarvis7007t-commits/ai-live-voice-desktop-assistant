@@ -661,6 +661,13 @@ export default function App() {
   }, [projects]);
 
   useEffect(() => {
+    if (config.customApiKey) {
+      localStorage.setItem('GEMINI_API_KEY', config.customApiKey);
+      localStorage.setItem('wardenix_api_key', config.customApiKey);
+    }
+  }, [config.customApiKey]);
+
+  useEffect(() => {
     const handleSync = () => {
       const stored = readStoredProjects();
       if (JSON.stringify(stored) !== JSON.stringify(projects)) {
@@ -924,27 +931,68 @@ export default function App() {
         }));
 
       const githubToken = localStorage.getItem('github_token');
+      let data: any = null;
 
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          message: text,
-          history: chatHistory.length > 0 ? chatHistory.slice(0, -1) : [],
-          model: selectedModel.apiModel || MODEL_NAME,
-          githubToken: githubToken || undefined
-        }),
-      });
+      try {
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            message: text,
+            history: chatHistory.length > 0 ? chatHistory.slice(0, -1) : [],
+            model: selectedModel.apiModel || MODEL_NAME,
+            githubToken: githubToken || undefined
+          }),
+        });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to get response from server');
+        if (!response.ok) {
+          throw new Error('Server returned non-ok status');
+        }
+
+        const textResponse = await response.text();
+        try {
+          data = JSON.parse(textResponse);
+        } catch {
+          throw new Error('Server response not in JSON format');
+        }
+      } catch (serverError) {
+        console.warn("Express backend API failed, falling back to client-side Gemini API:", serverError);
+        
+        const apiKey = config.customApiKey || 
+                       localStorage.getItem('wardenix_api_key') || 
+                       localStorage.getItem('GEMINI_API_KEY') || 
+                       '';
+
+        if (!apiKey) {
+          throw new Error("Chat connection failed. For hosted/Vercel mode, please open Settings (gear icon) -> API Configuration and enter your custom Gemini API key to continue chatting!");
+        }
+
+        const { GoogleGenAI } = await import('@google/genai');
+        const ai = new GoogleGenAI({
+          apiKey,
+          apiVersion: 'v1beta',
+          httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
+        });
+
+        const activeModelId = selectedModel.apiModel || MODEL_NAME;
+        const formattedGenAIHistory = chatHistory.length > 0 
+          ? chatHistory.slice(0, -1).map((item: any) => ({
+              role: item.role,
+              parts: item.parts.map((p: any) => ({ text: p.text || '' }))
+            })) 
+          : [];
+
+        const chat = ai.chats.create({
+          model: activeModelId,
+          history: formattedGenAIHistory,
+        });
+
+        const result = await chat.sendMessage({ message: text });
+        data = { text: result.text || 'No response.' };
       }
 
-      const data = await response.json();
-      
       const assistantMessage: ChatMessage = {
         role: 'assistant',
         content: data.text,
