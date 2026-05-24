@@ -545,7 +545,7 @@ const formatFileSize = (bytes: number) => {
 export default function App() {
   const viewParam = new URLSearchParams(window.location.search).get('view');
   if (viewParam === 'live') {
-    return <LiveAssistant onClose={() => {}} />;
+    return <LiveAssistant />;
   }
 
   const [activeView, setActiveView] = useState<'chat' | 'settings' | 'files' | 'imagine' | 'gmail' | 'calendar' | 'drive' | 'meet' | 'plugins' | 'automations' | 'search' | 'keep' | 'slides'>('chat');

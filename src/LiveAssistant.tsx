@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { GoogleGenAI, Modality, Type, FunctionDeclaration } from '@google/genai';
 import { motion, AnimatePresence } from 'motion/react';
-import { Mic, MicOff, Video, VideoOff, Settings, Globe, PhoneOff, MousePointer2, X, Save, ExternalLink } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, Settings, Globe, PhoneOff, MousePointer2, X, Save } from 'lucide-react';
 import { SessionStatus, LiveConfig, UserProfile, AISetting, TranscriptionEntry } from './types';
 import { createBlob, decode, decodeAudioData } from './utils/audio-utils';
 import Visualizer from './components/Visualizer';
@@ -303,52 +303,6 @@ const LiveAssistant: React.FC<LiveAssistantProps> = ({ onClose, onSaveLiveConver
     };
   }, [onSaveLiveConversation]);
 
-  const handleTogglePiP = async () => {
-    if (!('documentPictureInPicture' in window)) {
-      alert("Always-on-top Picture-in-Picture window is only supported in modern Chromium-based browsers (Chrome, Edge, Opera, etc.).");
-      return;
-    }
-
-    try {
-      const pip = (window as any).documentPictureInPicture;
-      if (pip.window) {
-        pip.window.close();
-        return;
-      }
-
-      setIsSettingsOpen(false);
-
-      const pipWindow = await pip.requestWindow({
-        width: 450,
-        height: 650,
-      });
-
-      setStatusMessage("Floated Always on Top!");
-      setTimeout(() => setStatusMessage(null), 3000);
-
-      const iframe = pipWindow.document.createElement('iframe');
-      const currentUrl = new URL(window.location.href);
-      currentUrl.searchParams.set('view', 'live');
-      iframe.src = currentUrl.toString();
-      iframe.style.width = '100vw';
-      iframe.style.height = '100vh';
-      iframe.style.border = 'none';
-      iframe.style.margin = '0';
-      iframe.style.padding = '0';
-      iframe.setAttribute('allow', 'microphone; camera; display-capture; autoplay');
-
-      pipWindow.document.body.style.margin = '0';
-      pipWindow.document.body.style.padding = '0';
-      pipWindow.document.body.style.overflow = 'hidden';
-      pipWindow.document.body.style.backgroundColor = '#0b0f19';
-
-      pipWindow.document.body.appendChild(iframe);
-    } catch (err: any) {
-      console.warn("Failed to open Picture-in-Picture window:", err);
-      alert("To use always-on-top Floating Mode, please open the application in a new tab (click the 'Open in new tab' button or use the Shared App URL) and then click the Float on PC button!");
-    }
-  };
-
   const initialAISettings: AISetting[] = [
     {
       id: 'gemini',
@@ -517,9 +471,12 @@ const LiveAssistant: React.FC<LiveAssistantProps> = ({ onClose, onSaveLiveConver
         // Ensure the video plays
         await screenVideoRef.current.play().catch(e => console.error("Screen video play failed:", e));
 
-        screenStream.getTracks()[0].onended = () => {
-          setConfig(p => ({ ...p, isScreenEnabled: false }));
-        };
+        const tracks = screenStream.getTracks();
+        if (tracks && tracks.length > 0) {
+          tracks[0].onended = () => {
+            setConfig(p => ({ ...p, isScreenEnabled: false }));
+          };
+        }
         setConfig(p => ({ ...p, isScreenEnabled: true }));
         setStatusMessage("Screen share active");
         setTimeout(() => setStatusMessage(null), 2000);
@@ -751,7 +708,10 @@ const LiveAssistant: React.FC<LiveAssistantProps> = ({ onClose, onSaveLiveConver
 
       let screenStream: MediaStream | null = null;
       if (config.isScreenEnabled) {
-        await startScreenShare();
+        const activeStream = screenVideoRef.current?.srcObject as MediaStream;
+        if (!activeStream || !activeStream.active) {
+          await startScreenShare();
+        }
       }
 
       // Proactive check for microphone
@@ -1086,16 +1046,6 @@ const LiveAssistant: React.FC<LiveAssistantProps> = ({ onClose, onSaveLiveConver
             title={isSaved ? "Saved to Chat" : "Save Live Conversation"}
           >
             <Save size={16} />
-          </button>
-        )}
-
-        {!isElectron && (
-          <button
-            className="control-icon text-slate-200 hover:text-cyan-400"
-            onClick={handleTogglePiP}
-            title="Float Always on Top"
-          >
-            <ExternalLink size={16} />
           </button>
         )}
 

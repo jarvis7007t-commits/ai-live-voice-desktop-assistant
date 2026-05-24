@@ -3,7 +3,8 @@
   "description": "Lumax AI is a high-performance AI workspace integrated with the Wardenix Live Voice Assistant for multimodal system control and collaboration.",
   "requestFramePermissions": [
     "camera",
-    "microphone"
+    "microphone",
+    "display-capture"
   ],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
