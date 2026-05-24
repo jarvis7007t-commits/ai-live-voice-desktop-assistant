@@ -13,7 +13,11 @@ import {
   FileText,
   FileCode,
   FilePieChart,
-  File as FileIcon
+  File as FileIcon,
+  Folder,
+  FolderOpen,
+  ChevronRight,
+  Home
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -42,6 +46,7 @@ const FileManager: React.FC<FileManagerProps> = ({ files, onClose, onDelete }) =
   const [sortBy, setSortBy] = useState('Last Used Time');
   const [previewFile, setPreviewFile] = useState<FileItem | null>(null);
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
+  const [currentPath, setCurrentPath] = useState('');
 
   const filteredFiles = useMemo(() => {
     return files.filter(f => {
@@ -98,9 +103,56 @@ const FileManager: React.FC<FileManagerProps> = ({ files, onClose, onDelete }) =
         return parseSize(b.size) - parseSize(a.size);
       }
       // Date and Last Used Time use same logic for now as we only have one date string
-      return new Date(b.date).getTime() - new Date(a.date).getTime();
+      const parseDate = (dStr: string) => {
+        const parsed = Date.parse(dStr);
+        return isNaN(parsed) ? 0 : parsed;
+      };
+      return parseDate(b.date) - parseDate(a.date);
     });
   }, [filteredFiles, sortBy]);
+
+  const currentPathNormalized = currentPath ? (currentPath.endsWith('/') ? currentPath : currentPath + '/') : '';
+
+  const directoryContents = useMemo(() => {
+    const isSearchingOrFiltering = searchQuery || activeFilter.type || activeFilter.owner;
+    
+    if (isSearchingOrFiltering) {
+      return {
+        subfolders: [] as string[],
+        files: sortedFiles
+      };
+    }
+
+    const subdirs = new Set<string>();
+    const directFiles: FileItem[] = [];
+
+    sortedFiles.forEach(f => {
+      const name = f.name;
+      if (currentPath === '') {
+        const idx = name.indexOf('/');
+        if (idx === -1) {
+          directFiles.push(f);
+        } else {
+          subdirs.add(name.substring(0, idx));
+        }
+      } else {
+        if (name.startsWith(currentPathNormalized)) {
+          const remainder = name.substring(currentPathNormalized.length);
+          const idx = remainder.indexOf('/');
+          if (idx === -1) {
+            directFiles.push(f);
+          } else {
+            subdirs.add(remainder.substring(0, idx));
+          }
+        }
+      }
+    });
+
+    return {
+      subfolders: Array.from(subdirs).sort((a, b) => a.localeCompare(b)),
+      files: directFiles
+    };
+  }, [sortedFiles, currentPath, currentPathNormalized, searchQuery, activeFilter]);
 
   return (
     <div className="flex flex-col h-full bg-white/70 backdrop-blur-[32px] text-slate-900 rounded-3xl overflow-hidden shadow-2xl border border-white/40">
@@ -257,61 +309,132 @@ const FileManager: React.FC<FileManagerProps> = ({ files, onClose, onDelete }) =
         </div>
       </div>
 
+      {/* Breadcrumbs (only when not searching/filtering) */}
+      {!searchQuery && !activeFilter.type && !activeFilter.owner && (
+        <div className="px-6 py-2.5 bg-slate-50/50 flex items-center gap-1.5 border-b border-slate-100 overflow-x-auto text-[13px] font-bold text-slate-500">
+          <button 
+            onClick={() => setCurrentPath('')}
+            className="flex items-center gap-1 hover:text-slate-900 transition-colors py-1 px-1.5 rounded hover:bg-slate-100/60 shrink-0"
+          >
+            <Home size={14} />
+            <span>Files</span>
+          </button>
+          {currentPath.split('/').filter(Boolean).map((segment, idx, arr) => {
+            const pathUpToSegment = arr.slice(0, idx + 1).join('/');
+            return (
+              <React.Fragment key={pathUpToSegment}>
+                <ChevronRight size={12} className="text-slate-350 shrink-0" />
+                <button 
+                  onClick={() => setCurrentPath(pathUpToSegment)}
+                  className="hover:text-slate-900 transition-colors py-1 px-1.5 rounded hover:bg-slate-100/60 truncate max-w-[120px] shrink-0"
+                >
+                  {segment}
+                </button>
+              </React.Fragment>
+            );
+          })}
+        </div>
+      )}
+
       {/* File List */}
       <div className="flex-1 overflow-y-auto px-6 pb-6 space-y-2">
-        {sortedFiles.map((file) => (
-          <div 
-            key={file.id}
-            onClick={() => {
-              if (file.thumbnail || file.type.startsWith('image/')) {
-                setFullscreenImage(file.thumbnail || null);
-              } else {
-                setPreviewFile(file);
-              }
-            }}
-            className={`group flex items-center gap-4 p-3 rounded-2xl border transition-all cursor-pointer ${
-              selectedIds.has(file.id) 
-                ? 'bg-slate-50 border-slate-900 shadow-sm' 
-                : 'bg-white border-slate-100 hover:border-slate-300'
-            }`}
-          >
+        {/* Render Folders (only in browse mode, which means subdir is populated when not searching/filtering) */}
+        {directoryContents.subfolders.map((folderName) => {
+          const folderPath = currentPath === '' ? folderName : `${currentPath}/${folderName}`;
+          return (
             <div 
-              onClick={(e) => toggleSelect(file.id, e)}
-              className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all shrink-0 ${
-                selectedIds.has(file.id) ? 'bg-slate-900 border-slate-900' : 'border-slate-300 group-hover:border-slate-400'
+              key={folderPath}
+              onClick={() => setCurrentPath(folderPath)}
+              className="group flex items-center gap-4 p-3 rounded-2xl border bg-white border-slate-100 hover:border-slate-300 transition-all cursor-pointer select-none"
+            >
+              <div className="w-5 h-5 rounded border-2 border-transparent flex items-center justify-center shrink-0" />
+              
+              <div className="w-14 h-14 rounded-xl bg-amber-50/60 border border-amber-100 flex items-center justify-center shrink-0">
+                <Folder size={24} className="text-amber-500 fill-amber-500/10 group-hover:scale-110 transition-transform" />
+              </div>
+
+              <div className="flex-1 min-w-0">
+                <h3 className="text-sm font-bold text-slate-950 truncate tracking-tight">{folderName}</h3>
+                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
+                  Folder • Click to open
+                </div>
+              </div>
+              
+              <ChevronRight size={16} className="text-slate-350 group-hover:text-slate-500 transition-colors mr-1" />
+            </div>
+          );
+        })}
+
+        {/* Render Files */}
+        {directoryContents.files.map((file) => {
+          const isSearchingOrFiltering = searchQuery || activeFilter.type || activeFilter.owner;
+          const displayName = isSearchingOrFiltering 
+            ? file.name 
+            : (file.name.includes('/') ? file.name.substring(file.name.lastIndexOf('/') + 1) : file.name);
+
+          return (
+            <div 
+              key={file.id}
+              onClick={() => {
+                if (file.thumbnail || file.type.startsWith('image/')) {
+                  setFullscreenImage(file.thumbnail || null);
+                } else {
+                  setPreviewFile(file);
+                }
+              }}
+              className={`group flex items-center gap-4 p-3 rounded-2xl border transition-all cursor-pointer ${
+                selectedIds.has(file.id) 
+                  ? 'bg-slate-50 border-slate-900 shadow-sm' 
+                  : 'bg-white border-slate-100 hover:border-slate-300'
               }`}
             >
-              {selectedIds.has(file.id) && <Check size={14} className="text-white" />}
-            </div>
-            
-            <div className="w-14 h-14 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shrink-0">
-               {file.thumbnail ? (
-                 <img src={file.thumbnail} alt={file.name} className="w-full h-full object-cover transition-transform group-hover:scale-110" />
-               ) : file.type.startsWith('image/') ? (
-                 <div className="w-full h-full bg-slate-100 flex items-center justify-center">
-                    <FileImage size={24} className="text-slate-400" />
-                 </div>
-               ) : (
-                 <FileIcon size={24} className="text-slate-400" />
-               )}
-            </div>
+              <div 
+                onClick={(e) => toggleSelect(file.id, e)}
+                className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all shrink-0 ${
+                  selectedIds.has(file.id) ? 'bg-slate-900 border-slate-900' : 'border-slate-300 group-hover:border-slate-400'
+                }`}
+              >
+                {selectedIds.has(file.id) && <Check size={14} className="text-white" />}
+              </div>
+              
+              <div className="w-14 h-14 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shrink-0">
+                 {file.thumbnail ? (
+                   <img src={file.thumbnail} alt={file.name} className="w-full h-full object-cover transition-transform group-hover:scale-110" />
+                 ) : file.type.startsWith('image/') ? (
+                   <div className="w-full h-full bg-slate-100 flex items-center justify-center">
+                      <FileImage size={24} className="text-slate-400" />
+                   </div>
+                 ) : (
+                   <FileIcon size={24} className="text-slate-400" />
+                 )}
+              </div>
 
-            <div className="flex-1 min-w-0">
-               <h3 className="text-sm font-bold text-slate-900 truncate tracking-tight">{file.name}</h3>
-               <div className="flex items-center gap-2 text-[12px] font-medium text-slate-400">
-                  <span>{file.size}</span>
-                  <span>•</span>
-                  <span>{file.date}</span>
-                  <span>•</span>
-                  <span>{file.type}</span>
-               </div>
+              <div className="flex-1 min-w-0">
+                 <h3 className="text-sm font-bold text-slate-900 truncate tracking-tight">{displayName}</h3>
+                 <div className="flex items-center gap-2 text-[12px] font-medium text-slate-400 truncate">
+                    <span>{file.size}</span>
+                    <span>•</span>
+                    <span>{file.date}</span>
+                    <span>•</span>
+                    <span>{file.type}</span>
+                    {isSearchingOrFiltering && file.name.includes('/') && (
+                      <>
+                        <span>•</span>
+                        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider truncate bg-slate-100 px-1.5 py-0.5 rounded">
+                          {file.name.substring(0, file.name.lastIndexOf('/'))}
+                        </span>
+                      </>
+                    )}
+                 </div>
+              </div>
             </div>
-          </div>
-        ))}
-        {filteredFiles.length === 0 && (
+          );
+        })}
+
+        {directoryContents.subfolders.length === 0 && directoryContents.files.length === 0 && (
           <div className="flex flex-col items-center justify-center h-64 text-slate-400">
             <Search size={48} className="mb-4 opacity-10" />
-            <p className="text-sm font-medium">No files found matching your criteria</p>
+            <p className="text-sm font-medium">No contents in this directory</p>
           </div>
         )}
       </div>

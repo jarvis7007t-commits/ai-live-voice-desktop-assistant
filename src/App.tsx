@@ -15,6 +15,7 @@ import {
   Folder,
   FolderOpen,
   Hand,
+  Info,
   Layers,
   LogOut,
   MessageSquare,
@@ -44,6 +45,8 @@ import {
   Video,
   CheckSquare,
   Presentation,
+  Upload,
+  FolderPlus,
 } from 'lucide-react';
 
 import { AnimatePresence, motion } from 'motion/react';
@@ -63,7 +66,8 @@ import PluginsView from './components/PluginsView';
 import SearchView from './components/SearchView';
 import KeepView from './components/KeepView';
 import SlidesView from './components/SlidesView';
-import { LiveConfig, AISetting, UserProfile } from './types';
+import { AutomationsView } from './components/AutomationsView';
+import { LiveConfig, AISetting, UserProfile, TranscriptionEntry } from './types';
 import { MODEL_NAME, MODEL_FLASH_2_0, MODEL_PRO_NAME } from './lib/gemini';
 import { initAuth, logout } from './lib/auth';
 
@@ -117,14 +121,16 @@ interface ModelOption {
   name: string;
   apiModel?: string;
   icon: React.ReactNode;
+  isFast?: boolean;
 }
 
 const STORAGE_KEY = 'lumax_codex_projects';
 
 const MODEL_OPTIONS: ModelOption[] = [
-  { name: 'Gemini 3.5 Flash', id: 'gemini-3.5-flash', apiModel: 'gemini-3.5-flash', icon: <Sparkles size={14} className="text-blue-500" /> },
-  { name: 'Gemini 3.1 Pro (Preview)', id: 'gemini-3.1-pro-preview', apiModel: 'gemini-3.1-pro-preview', icon: <Layers size={14} className="text-indigo-500" /> },
-  { name: 'Gemini 2.0 Flash', id: 'gemini-2.0-flash', apiModel: 'gemini-2.0-flash', icon: <Sparkles size={14} className="text-violet-500" /> },
+  { name: 'Gemini 3.5 Flash (Medium)', id: 'gemini-3.5-flash-medium', apiModel: 'gemini-3.5-flash', icon: <Sparkles size={14} className="text-blue-500" />, isFast: true },
+  { name: 'Gemini 3.5 Flash (High)', id: 'gemini-3.5-flash-high', apiModel: 'gemini-3.5-flash', icon: <Sparkles size={14} className="text-sky-500" />, isFast: true },
+  { name: 'Gemini 3.1 Pro (Low)', id: 'gemini-3.1-pro-low', apiModel: 'gemini-3.1-pro-preview', icon: <Layers size={14} className="text-indigo-500" /> },
+  { name: 'Gemini 3.1 Pro (High)', id: 'gemini-3.1-pro-high', apiModel: 'gemini-3.1-pro-preview', icon: <Layers size={14} className="text-violet-500" /> },
 ];
 
 const STARTER_PROMPTS = [
@@ -258,6 +264,7 @@ function ChatInput({
   onModelToggle,
   onSelectModel,
   onUploadClick,
+  onUploadFolderClick,
   onToggleMic,
   micActive,
   attachments,
@@ -274,6 +281,7 @@ function ChatInput({
   onModelToggle: () => void;
   onSelectModel: (model: ModelOption) => void;
   onUploadClick: () => void;
+  onUploadFolderClick: () => void;
   onToggleMic: () => void;
   micActive: boolean;
   attachments: PendingAttachment[];
@@ -281,6 +289,20 @@ function ChatInput({
   onOpenLive: () => void;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [isUploadMenuOpen, setIsUploadMenuOpen] = useState(false);
+  const uploadMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (uploadMenuRef.current && !uploadMenuRef.current.contains(event.target as Node)) {
+        setIsUploadMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   useEffect(() => {
     if (!textareaRef.current) return;
@@ -289,9 +311,9 @@ function ChatInput({
   }, [value]);
 
   return (
-    <div className="relative w-full max-w-3xl overflow-hidden rounded-[26px] border border-slate-100 bg-white shadow-[0_18px_60px_rgba(15,23,42,0.07)]">
+    <div className="relative w-full max-w-3xl rounded-[26px] border border-slate-100 bg-white shadow-[0_18px_60px_rgba(15,23,42,0.07)]">
       {attachments.length ? (
-        <div className="flex flex-wrap gap-2 border-b border-slate-100 px-5 py-3">
+        <div className="flex flex-wrap gap-2 border-b border-slate-100 px-5 py-3 rounded-t-[26px]">
           {attachments.map((attachment) => (
             <span
               key={attachment.id}
@@ -324,10 +346,64 @@ function ChatInput({
       </div>
 
       <div className="flex items-center justify-between px-4 pb-3">
-        <div className="flex items-center gap-1">
-          <button onClick={onUploadClick} className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-50">
+        <div className="flex items-center gap-1 relative" ref={uploadMenuRef}>
+          <button 
+            type="button"
+            onClick={() => setIsUploadMenuOpen(prev => !prev)} 
+            className={`rounded-lg p-2 transition-colors hover:bg-slate-50 ${isUploadMenuOpen ? 'text-slate-850 bg-slate-100/60' : 'text-slate-400'}`}
+            title="Upload Files/Folder"
+          >
             <Paperclip size={18} />
           </button>
+
+          <AnimatePresence>
+            {isUploadMenuOpen && (
+              <motion.div
+                initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                transition={{ duration: 0.15 }}
+                className="absolute bottom-full left-0 z-[120] mb-3 w-56 overflow-hidden rounded-2xl border border-slate-100 bg-white p-1.5 shadow-[0_20px_50px_-12px_rgba(15,23,42,0.15)]"
+              >
+                <div className="px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 border-b border-slate-50 mb-1 select-none">
+                  Attachments
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onUploadClick();
+                    setIsUploadMenuOpen(false);
+                  }}
+                  className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-xs font-bold text-slate-700 transition hover:bg-slate-50"
+                >
+                  <div className="rounded-lg bg-blue-50 p-1.5 text-blue-500">
+                    <Upload size={14} />
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="font-semibold text-slate-800">Upload Images/Files</span>
+                    <span className="text-[10px] font-medium text-slate-400">Multiple files supported</span>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onUploadFolderClick();
+                    setIsUploadMenuOpen(false);
+                  }}
+                  className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-xs font-bold text-slate-700 transition hover:bg-slate-50"
+                >
+                  <div className="rounded-lg bg-amber-50 p-1.5 text-amber-600">
+                    <FolderPlus size={14} />
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="font-semibold text-slate-850">Upload Folder</span>
+                    <span className="text-[10px] font-medium text-slate-400">Maintains subdirectories</span>
+                  </div>
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           <button
             onClick={onOpenLive}
             className="rounded-lg p-2 text-cyan-500 hover:bg-cyan-50 transition-all hover:scale-110"
@@ -356,7 +432,7 @@ function ChatInput({
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -10 }}
-                  className="absolute bottom-full right-0 z-[120] mb-3 w-64 rounded-2xl border border-slate-100 bg-white p-2 shadow-[0_30px_60px_-12px_rgba(15,23,42,0.18)]"
+                  className="absolute bottom-full right-0 z-[120] mb-3 w-72 max-h-[380px] overflow-y-auto rounded-2xl border border-slate-100 bg-white p-2 shadow-[0_30px_60px_-12px_rgba(15,23,42,0.18)] scrollbar-thin"
                 >
                   <div className="mb-1 border-b border-slate-50 px-3 py-2 text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">
                     Available Models
@@ -372,8 +448,14 @@ function ChatInput({
                       <div className={`rounded-lg p-1.5 ${selectedModel.id === model.id ? 'bg-sky-100/60' : 'bg-slate-100/70'}`}>
                         {model.icon}
                       </div>
-                      <div className="flex flex-col items-start">
-                        <span>{model.name}</span>
+                      <div className="flex flex-1 items-center justify-between">
+                        <span className="text-slate-800">{model.name}</span>
+                        {model.isFast && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-50 text-slate-500 text-[9px] font-bold border border-slate-100">
+                            Fast
+                            <Info size={10} className="text-slate-400 shrink-0" />
+                          </span>
+                        )}
                       </div>
                     </button>
                   ))}
@@ -463,7 +545,7 @@ const formatFileSize = (bytes: number) => {
 export default function App() {
   const viewParam = new URLSearchParams(window.location.search).get('view');
   if (viewParam === 'live') {
-    return <LiveAssistant />;
+    return <LiveAssistant onClose={() => {}} />;
   }
 
   const [activeView, setActiveView] = useState<'chat' | 'settings' | 'files' | 'imagine' | 'gmail' | 'calendar' | 'drive' | 'meet' | 'plugins' | 'automations' | 'search' | 'keep' | 'slides'>('chat');
@@ -524,6 +606,14 @@ export default function App() {
   const [openMenu, setOpenMenu] = useState<MenuKey>(null);
   const [micActive, setMicActive] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
+  const [uploadToast, setUploadToast] = useState<{ message: string; type: 'success' | 'warn' | 'error' } | null>(null);
+
+  useEffect(() => {
+    if (uploadToast) {
+      const timer = setTimeout(() => setUploadToast(null), 6000);
+      return () => clearTimeout(timer);
+    }
+  }, [uploadToast]);
   const [globalFiles, setGlobalFiles] = useState<FileItem[]>([
     { id: '1', name: 'image.png', size: '51.78 KB', date: 'May 10', type: 'image/png', createdBy: 'Me' },
     { id: '2', name: 'image.png', size: '76.84 KB', date: 'Apr 12', type: 'image/png', createdBy: 'Me' },
@@ -536,6 +626,7 @@ export default function App() {
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<any>(null);
 
   const activeProject = useMemo(
@@ -568,6 +659,33 @@ export default function App() {
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
   }, [projects]);
+
+  useEffect(() => {
+    const handleSync = () => {
+      const stored = readStoredProjects();
+      if (JSON.stringify(stored) !== JSON.stringify(projects)) {
+        setProjects(stored);
+      }
+      
+      const storedActiveId = localStorage.getItem('lumax_active_project_id');
+      if (storedActiveId && storedActiveId !== activeProjectId) {
+        setActiveProjectId(storedActiveId);
+        setActiveView('chat');
+        localStorage.removeItem('lumax_active_project_id');
+        setUploadToast({
+          message: "Live voice conversation saved to chat history!",
+          type: 'success'
+        });
+      }
+    };
+
+    window.addEventListener('storage', handleSync);
+    window.addEventListener('live-conversation-saved', handleSync);
+    return () => {
+      window.removeEventListener('storage', handleSync);
+      window.removeEventListener('live-conversation-saved', handleSync);
+    };
+  }, [projects, activeProjectId]);
 
   useEffect(() => {
     window.localStorage.setItem('wardenix_user', JSON.stringify(user));
@@ -605,25 +723,59 @@ export default function App() {
     const files = Array.from(event.target.files ?? []) as File[];
     if (!files.length) return;
 
-    const fileAttachments: { id: string; name: string; type: string; file: File; thumbnail?: string }[] = await Promise.all(
-      files.map(async (file) => {
-        let thumbnail: string | undefined;
-        if (file.type.startsWith('image/')) {
-          thumbnail = await new Promise<string>((resolve) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result as string);
-            reader.readAsDataURL(file);
-          });
-        }
-        return {
-          id: `${file.name}-${file.lastModified}-${Math.random()}`,
-          name: file.name,
-          type: file.type || 'application/octet-stream',
-          file,
-          thumbnail,
-        };
-      })
-    );
+    const isExcludedPath = (p: string) => {
+      const norm = p.toLowerCase().replace(/\\/g, '/');
+      const segments = norm.split('/');
+      const blacklisted = [
+        'node_modules', '.git', '.next', 'dist', 'build', '.cache', 
+        'bin', 'obj', 'venv', '.venv', '.sass-cache', '.vscode', 
+        '.idea', '__pycache__', 'out', 'target', 'appdata', 'library', 'caches'
+      ];
+      return segments.some(segment => blacklisted.includes(segment));
+    };
+
+    const originalCount = files.length;
+    const filtered = files.filter(file => {
+      const path = file.webkitRelativePath || file.name;
+      return !isExcludedPath(path);
+    });
+
+    const MAX_FILES = 300;
+    const finalFiles = filtered.slice(0, MAX_FILES);
+    const ignoredCount = originalCount - finalFiles.length;
+
+    if (ignoredCount > 0) {
+      if (filtered.length > MAX_FILES) {
+        setUploadToast({
+          message: `Optimized: Filtered out heavy/system folders and capped upload at the first ${MAX_FILES} content files (ignored ${ignoredCount} file(s) to avoid memory crash).`,
+          type: 'warn'
+        });
+      } else {
+        setUploadToast({
+          message: `Optimized: Ignored ${ignoredCount} heavy/system file(s) (e.g. node_modules, .git).`,
+          type: 'success'
+        });
+      }
+    } else {
+      setUploadToast({
+        message: `Successfully uploaded ${finalFiles.length} file(s).`,
+        type: 'success'
+      });
+    }
+
+    const fileAttachments: { id: string; name: string; type: string; file: File; thumbnail?: string }[] = finalFiles.map((file) => {
+      let thumbnail: string | undefined;
+      if (file.type.startsWith('image/')) {
+        thumbnail = URL.createObjectURL(file);
+      }
+      return {
+        id: `${file.name}-${file.lastModified}-${Math.random()}`,
+        name: file.webkitRelativePath || file.name,
+        type: file.type || 'application/octet-stream',
+        file,
+        thumbnail,
+      };
+    });
 
     const nextAttachments: PendingAttachment[] = fileAttachments.map(({ id, name, type, file, thumbnail }) => ({
       id,
@@ -646,6 +798,7 @@ export default function App() {
 
     setGlobalFiles(prev => [...newFileItems, ...prev]);
     setPendingAttachments((prev) => [...prev, ...nextAttachments]);
+    setActiveView('files');
     event.target.value = '';
   };
 
@@ -687,6 +840,35 @@ export default function App() {
     updateProject(id, (p) => ({ ...p, name: newName }));
     setEditingProjectId(null);
   };
+
+  const handleSaveLiveConversation = React.useCallback((entries: TranscriptionEntry[]) => {
+    if (!entries || entries.length === 0) return;
+    const newMessages: ChatMessage[] = entries.map((entry, idx) => ({
+      role: entry.role === 'model' ? 'assistant' : 'user',
+      content: entry.text,
+      timestamp: Date.now() - (entries.length - idx) * 1000,
+    }));
+    const firstUserMsg = entries.find(e => e.role === 'user')?.text || 
+                         entries.find(e => e.role === 'model')?.text || 
+                         'Live Voice Session';
+    const projectName = `Live Voice: ${firstUserMsg.substring(0, 30)}${firstUserMsg.length > 30 ? '...' : ''}`;
+    const newProject: ProjectRecord = {
+      id: String(Date.now() + Math.random()),
+      name: projectName,
+      updatedAt: Date.now(),
+      messages: newMessages,
+    };
+    setProjects((prevProjects) => {
+      const next = [newProject, ...prevProjects.filter(p => p.id !== newProject.id)];
+      return sortProjects(next);
+    });
+    setActiveProjectId(newProject.id);
+    setActiveView('chat');
+    setUploadToast({
+      message: "Live voice conversation saved to chat history!",
+      type: 'success'
+    });
+  }, []);
 
   const handleSend = async () => {
     const text = inputValue.trim();
@@ -808,8 +990,44 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen w-full flex-col overflow-hidden bg-slate-50">
+    <div className="flex h-screen w-full flex-col overflow-hidden bg-slate-50 relative">
       <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleUpload} />
+      <input 
+        ref={folderInputRef} 
+        type="file" 
+        multiple 
+        className="hidden" 
+        onChange={handleUpload} 
+        {...{ webkitdirectory: "", directory: "" } as any}
+      />
+
+      <AnimatePresence>
+        {uploadToast && (
+          <motion.div
+            initial={{ opacity: 0, y: -20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.95 }}
+            className="fixed top-5 left-1/2 -translate-x-1/2 z-[250] flex items-center gap-3 rounded-2xl border border-slate-150 bg-white/95 backdrop-blur-md px-5 py-3.5 shadow-[0_20px_50px_rgba(15,23,42,0.15)] max-w-md w-[calc(100%-2rem)]"
+          >
+            <div className={`p-1.5 rounded-lg shrink-0 ${
+              uploadToast.type === 'success' ? 'bg-emerald-50 text-emerald-600' :
+              uploadToast.type === 'warn' ? 'bg-amber-50 text-amber-600' :
+              'bg-red-50 text-red-600'
+            }`}>
+              {uploadToast.type === 'success' ? <CheckSquare size={16} /> : <Info size={16} />}
+            </div>
+            <div className="flex-1 text-xs font-semibold text-slate-850 leading-relaxed pr-1">
+              {uploadToast.message}
+            </div>
+            <button 
+              onClick={() => setUploadToast(null)} 
+              className="text-slate-400 hover:text-slate-600 transition p-1.5 rounded-lg hover:bg-slate-50"
+            >
+              <X size={14} />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <AnimatePresence>
@@ -859,63 +1077,7 @@ export default function App() {
                    active={activeView === 'automations'}
                  />
 
-                 <div className="mt-4 pt-4 border-t border-slate-100 flex flex-col gap-0.5">
-                   <p className="px-3.5 mb-1.5 text-[10px] font-black uppercase text-slate-400 tracking-wider">Workspace</p>
-                   <SidebarItem 
-                     icon={<Video size={18} className="text-emerald-500" />} 
-                     label="Google Meet" 
-                     onClick={() => {
-                       setActiveView('meet');
-                       setActiveProjectId(null);
-                     }} 
-                     active={activeView === 'meet'}
-                   />
-                   <SidebarItem 
-                     icon={<Mail size={18} className="text-[#EA4335]" />} 
-                     label="Gmail" 
-                     onClick={() => {
-                       setActiveView('gmail');
-                       setActiveProjectId(null);
-                     }} 
-                     active={activeView === 'gmail'}
-                   />
-                   <SidebarItem 
-                     icon={<Calendar size={18} className="text-[#4285F4]" />} 
-                     label="Google Calendar" 
-                     onClick={() => {
-                       setActiveView('calendar');
-                       setActiveProjectId(null);
-                     }} 
-                     active={activeView === 'calendar'}
-                   />
-                   <SidebarItem 
-                     icon={<HardDrive size={18} className="text-amber-500" />} 
-                     label="Google Drive" 
-                     onClick={() => {
-                       setActiveView('drive');
-                       setActiveProjectId(null);
-                     }} 
-                     active={activeView === 'drive'}
-                    />
-                    <SidebarItem 
-                      icon={<Presentation size={18} className="text-amber-605 text-amber-600" />} 
-                      label="Google Slides" 
-                      onClick={() => {
-                        setActiveView('slides');
-                        setActiveProjectId(null);
-                      }} 
-                      active={activeView === 'slides'}
-                    />
-                    <SidebarItem 
-                      icon={<CheckSquare size={18} className="text-amber-500" />} 
-                      label="Google Keep (Secure)" 
-                      onClick={() => {
-                        setActiveView('keep');
-                        setActiveProjectId(null);
-                      }} 
-                      active={activeView === 'keep'}
-                   />
-                 </div>
+
 
                   <div className="mt-6 space-y-1">
                      {[...projects].sort((a, b) => {
@@ -1111,17 +1273,15 @@ export default function App() {
                 user={user}
                 onClose={() => setActiveView('chat')} 
                 onUserUpdate={(u) => setUser(u)}
+                onLaunchPlugin={(id) => {
+                  setActiveView(id as any);
+                  setActiveProjectId(null);
+                }}
               />
             </div>
           ) : activeView === 'automations' ? (
-            <div className="flex-1 overflow-hidden bg-white flex flex-col items-center justify-center p-8">
-               <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400 mb-4">
-                 <Clock size={32} />
-               </div>
-               <h2 className="text-xl font-bold text-slate-900 mb-2">Automations</h2>
-               <p className="text-slate-500 font-medium text-center max-w-sm">
-                 Create and manage your automated workflows. This feature is coming soon to Wardenix AI.
-               </p>
+            <div className="flex-1 overflow-hidden bg-white">
+              <AutomationsView onClose={() => setActiveView('chat')} />
             </div>
           ) : (
             <div className="flex flex-1 flex-col overflow-hidden relative">
@@ -1236,6 +1396,7 @@ export default function App() {
                        onModelToggle={() => setOpenMenu(prev => prev === 'model' ? null : 'model')}
                        onSelectModel={(m) => { setSelectedModel(m); setOpenMenu(null); }}
                        onUploadClick={() => fileInputRef.current?.click()}
+                        onUploadFolderClick={() => folderInputRef.current?.click()}
                        onToggleMic={toggleMic}
                        micActive={micActive}
                        attachments={pendingAttachments}
@@ -1258,7 +1419,10 @@ export default function App() {
               exit={{ opacity: 0, y: 100 }}
               className="pointer-events-auto"
             >
-              <LiveAssistant onClose={() => setIsLiveSystemOpen(false)} />
+              <LiveAssistant 
+                onClose={() => setIsLiveSystemOpen(false)} 
+                onSaveLiveConversation={handleSaveLiveConversation}
+              />
             </motion.div>
           </div>
         )}

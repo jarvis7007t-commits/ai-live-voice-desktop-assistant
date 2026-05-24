@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { GoogleGenAI, Modality, Type, FunctionDeclaration } from '@google/genai';
 import { motion, AnimatePresence } from 'motion/react';
-import { Mic, MicOff, Video, VideoOff, Settings, Globe, PhoneOff, MousePointer2, X } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, Settings, Globe, PhoneOff, MousePointer2, X, Save, ExternalLink } from 'lucide-react';
 import { SessionStatus, LiveConfig, UserProfile, AISetting, TranscriptionEntry } from './types';
 import { createBlob, decode, decodeAudioData } from './utils/audio-utils';
 import Visualizer from './components/Visualizer';
@@ -203,9 +203,10 @@ const automationTools: FunctionDeclaration[] = [
 
 interface LiveAssistantProps {
   onClose: () => void;
+  onSaveLiveConversation?: (transcriptions: TranscriptionEntry[]) => void;
 }
 
-const LiveAssistant: React.FC<LiveAssistantProps> = ({ onClose }) => {
+const LiveAssistant: React.FC<LiveAssistantProps> = ({ onClose, onSaveLiveConversation }) => {
   const queryParams = new URLSearchParams(window.location.search);
   const isCameraView = queryParams.get('view') === 'camera';
 
@@ -216,6 +217,137 @@ const LiveAssistant: React.FC<LiveAssistantProps> = ({ onClose }) => {
     name: '',
     isLoggedIn: false
   });
+
+  const [sessionTranscriptions, setSessionTranscriptions] = useState<TranscriptionEntry[]>([]);
+  const [isSaved, setIsSaved] = useState(false);
+
+  const sessionTranscriptionsRef = useRef<TranscriptionEntry[]>([]);
+  const isSavedRef = useRef(false);
+
+  useEffect(() => {
+    sessionTranscriptionsRef.current = sessionTranscriptions;
+  }, [sessionTranscriptions]);
+
+  useEffect(() => {
+    isSavedRef.current = isSaved;
+  }, [isSaved]);
+
+  const saveToHistoryLocally = (entries: TranscriptionEntry[]) => {
+    if (!entries || entries.length === 0) return;
+    try {
+      const pRaw = localStorage.getItem('lumax_codex_projects');
+      let currentProjects: any[] = [];
+      if (pRaw) {
+        currentProjects = JSON.parse(pRaw);
+        if (!Array.isArray(currentProjects)) currentProjects = [];
+      }
+      
+      const newMessages = entries.map((entry, idx) => ({
+        role: entry.role === 'model' ? 'assistant' : 'user',
+        content: entry.text,
+        timestamp: Date.now() - (entries.length - idx) * 1000,
+      }));
+
+      const firstUserMsg = entries.find(e => e.role === 'user')?.text || 
+                           entries.find(e => e.role === 'model')?.text || 
+                           'Live Voice Session';
+      const projectName = `Live Voice: ${firstUserMsg.substring(0, 30)}${firstUserMsg.length > 30 ? '...' : ''}`;
+
+      const newProject = {
+        id: String(Date.now() + Math.random()),
+        name: projectName,
+        updatedAt: Date.now(),
+        messages: newMessages,
+      };
+
+      const updated = [newProject, ...currentProjects];
+      localStorage.setItem('lumax_codex_projects', JSON.stringify(updated));
+      localStorage.setItem('lumax_active_project_id', newProject.id);
+      
+      window.dispatchEvent(new Event('storage'));
+      window.dispatchEvent(new CustomEvent('live-conversation-saved', { detail: newProject }));
+    } catch (e) {
+      console.warn("Failed to save live conversation locally", e);
+    }
+  };
+
+  const handleSaveConversation = () => {
+    if (!sessionTranscriptions || sessionTranscriptions.length === 0) {
+      setStatusMessage("No conversation to save");
+      setTimeout(() => setStatusMessage(null), 2000);
+      return;
+    }
+
+    if (onSaveLiveConversation) {
+      onSaveLiveConversation(sessionTranscriptions);
+    } else {
+      saveToHistoryLocally(sessionTranscriptions);
+    }
+    
+    setIsSaved(true);
+
+    setStatusMessage("Saved to Chat History!");
+    setTimeout(() => setStatusMessage(null), 3000);
+  };
+
+  useEffect(() => {
+    return () => {
+      const currentTrans = sessionTranscriptionsRef.current;
+      if (currentTrans && currentTrans.length > 0 && !isSavedRef.current) {
+        if (onSaveLiveConversation) {
+          onSaveLiveConversation(currentTrans);
+        } else {
+          saveToHistoryLocally(currentTrans);
+        }
+      }
+    };
+  }, [onSaveLiveConversation]);
+
+  const handleTogglePiP = async () => {
+    if (!('documentPictureInPicture' in window)) {
+      alert("Always-on-top Picture-in-Picture window is only supported in modern Chromium-based browsers (Chrome, Edge, Opera, etc.).");
+      return;
+    }
+
+    try {
+      const pip = (window as any).documentPictureInPicture;
+      if (pip.window) {
+        pip.window.close();
+        return;
+      }
+
+      setIsSettingsOpen(false);
+
+      const pipWindow = await pip.requestWindow({
+        width: 450,
+        height: 650,
+      });
+
+      setStatusMessage("Floated Always on Top!");
+      setTimeout(() => setStatusMessage(null), 3000);
+
+      const iframe = pipWindow.document.createElement('iframe');
+      const currentUrl = new URL(window.location.href);
+      currentUrl.searchParams.set('view', 'live');
+      iframe.src = currentUrl.toString();
+      iframe.style.width = '100vw';
+      iframe.style.height = '100vh';
+      iframe.style.border = 'none';
+      iframe.style.margin = '0';
+      iframe.style.padding = '0';
+      iframe.setAttribute('allow', 'microphone; camera; display-capture; autoplay');
+
+      pipWindow.document.body.style.margin = '0';
+      pipWindow.document.body.style.padding = '0';
+      pipWindow.document.body.style.overflow = 'hidden';
+      pipWindow.document.body.style.backgroundColor = '#0b0f19';
+
+      pipWindow.document.body.appendChild(iframe);
+    } catch (err: any) {
+      console.warn("Failed to open Picture-in-Picture window:", err);
+      alert("To use always-on-top Floating Mode, please open the application in a new tab (click the 'Open in new tab' button or use the Shared App URL) and then click the Float on PC button!");
+    }
+  };
 
   const initialAISettings: AISetting[] = [
     {
@@ -480,6 +612,18 @@ const LiveAssistant: React.FC<LiveAssistantProps> = ({ onClose }) => {
   const stopSession = useCallback(() => {
     playSound('stop');
     isStoppingRef.current = true;
+
+    // Autosave live vocal conversation if anything transpired
+    const currentTrans = sessionTranscriptionsRef.current;
+    if (currentTrans && currentTrans.length > 0 && !isSavedRef.current) {
+      if (onSaveLiveConversation) {
+        onSaveLiveConversation(currentTrans);
+      } else {
+        saveToHistoryLocally(currentTrans);
+      }
+      setIsSaved(true);
+    }
+
     if (ipcRenderer) ipcRenderer.send('resize-window', false);
     if (frameIntervalRef.current) window.clearInterval(frameIntervalRef.current);
     if (sessionRef.current) {
@@ -507,7 +651,7 @@ const LiveAssistant: React.FC<LiveAssistantProps> = ({ onClose }) => {
     setConfig(c => ({ ...c, isCameraEnabled: false, isScreenEnabled: false }));
     setIsAutomationAuthorized(false);
     setTimeout(() => { isStoppingRef.current = false; }, 500);
-  }, [ipcRenderer, cameraStream]);
+  }, [ipcRenderer, cameraStream, onSaveLiveConversation]);
 
   const startVisionLoop = useCallback((sessionPromise: Promise<any>) => {
     if (frameIntervalRef.current) window.clearInterval(frameIntervalRef.current);
@@ -571,6 +715,8 @@ const LiveAssistant: React.FC<LiveAssistantProps> = ({ onClose }) => {
   const startSession = async () => {
     if (status !== SessionStatus.IDLE) return;
     try {
+      setSessionTranscriptions([]);
+      setIsSaved(false);
       playSound('start');
       if (ipcRenderer) ipcRenderer.send('resize-window', true);
       setStatus(SessionStatus.CONNECTING);
@@ -744,6 +890,8 @@ const LiveAssistant: React.FC<LiveAssistantProps> = ({ onClose }) => {
               const text = modelTurn.parts.map(p => p.text).filter(Boolean).join('');
               if (text) {
                 setTranscriptions(prev => [...(Array.isArray(prev) ? prev : []).slice(-10), { role: 'model', text }]);
+                setSessionTranscriptions(prev => [...prev, { role: 'model', text }]);
+                setIsSaved(false);
               }
             }
 
@@ -752,6 +900,8 @@ const LiveAssistant: React.FC<LiveAssistantProps> = ({ onClose }) => {
               const text = userTurn.parts.map(p => p.text).filter(Boolean).join('');
               if (text) {
                 setTranscriptions(prev => [...(Array.isArray(prev) ? prev : []).slice(-10), { role: 'user', text }]);
+                setSessionTranscriptions(prev => [...prev, { role: 'user', text }]);
+                setIsSaved(false);
               }
             }
           },
@@ -928,6 +1078,26 @@ const LiveAssistant: React.FC<LiveAssistantProps> = ({ onClose }) => {
         >
           {isConnected ? <MousePointer2 size={16} className="animate-pulse" /> : <MousePointer2 size={16} />}
         </button>
+
+        {sessionTranscriptions.length > 0 && (
+          <button
+            className={`control-icon ${isSaved ? 'text-emerald-500' : 'text-slate-200 hover:text-cyan-400'}`}
+            onClick={handleSaveConversation}
+            title={isSaved ? "Saved to Chat" : "Save Live Conversation"}
+          >
+            <Save size={16} />
+          </button>
+        )}
+
+        {!isElectron && (
+          <button
+            className="control-icon text-slate-200 hover:text-cyan-400"
+            onClick={handleTogglePiP}
+            title="Float Always on Top"
+          >
+            <ExternalLink size={16} />
+          </button>
+        )}
 
         <button
           className={`control-icon group ${isSettingsOpen ? 'icon-active-cyan' : 'icon-inactive'}`}

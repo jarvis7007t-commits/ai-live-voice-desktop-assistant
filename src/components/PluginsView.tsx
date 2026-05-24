@@ -46,10 +46,13 @@ import {
   Database,
   Globe,
   Inbox,
-  Video
+  Video,
+  Presentation
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { googleSignIn } from '../lib/auth';
+
+const LAUNCHABLE_PLUGINS = ['gmail', 'calendar', 'drive', 'meet', 'slides', 'keep'];
 
 interface PluginCard {
   id: string;
@@ -63,9 +66,10 @@ interface PluginsViewProps {
   user: any;
   onClose: () => void;
   onUserUpdate?: (updatedUserProfile: any) => void;
+  onLaunchPlugin?: (id: string) => void;
 }
 
-const PluginsView: React.FC<PluginsViewProps> = ({ user, onClose, onUserUpdate }) => {
+const PluginsView: React.FC<PluginsViewProps> = ({ user, onClose, onUserUpdate, onLaunchPlugin }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedConnector, setSelectedConnector] = useState<PluginCard | null>(null);
   const [authLoading, setAuthLoading] = useState<string | null>(null);
@@ -74,24 +78,28 @@ const PluginsView: React.FC<PluginsViewProps> = ({ user, onClose, onUserUpdate }
   // Track connected states
   const [isConnected, setIsConnected] = useState<Record<string, boolean>>(() => {
     const saved = localStorage.getItem('wardenix_connected_plugins');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {}
-    }
-    // Match the exact defaults shown in the images:
-    // Chrome, Netlify, GitHub, Cloudflare, Stripe are connected (checked)
-    return {
+    const defaultConnections = {
       'chrome': true,
       'netlify': true,
       'github': true,
       'cloudflare': true,
       'stripe': true,
-      'gmail': false,
-      'calendar': false,
-      'drive': false,
-      'meet': false
+      'gmail': true,
+      'calendar': true,
+      'drive': true,
+      'meet': true,
+      'slides': true,
+      'keep': true
     };
+    if (saved) {
+      try {
+        return {
+          ...defaultConnections,
+          ...JSON.parse(saved)
+        };
+      } catch (e) {}
+    }
+    return defaultConnections;
   });
 
   useEffect(() => {
@@ -204,7 +212,7 @@ const PluginsView: React.FC<PluginsViewProps> = ({ user, onClose, onUserUpdate }
     { 
       id: 'gmail', 
       name: 'Gmail', 
-      description: 'Read and manage Gmail', 
+      description: 'Read and manage Gmail messages and inline drafts', 
       icon: <Mail className="text-[#EA4335] group-hover:scale-110 transition-transform" size={24} />, 
       category: 'workspace' 
     },
@@ -213,6 +221,20 @@ const PluginsView: React.FC<PluginsViewProps> = ({ user, onClose, onUserUpdate }
       name: 'Google Meet', 
       description: 'Create instantly scheduled meeting spaces and customize configurations securely', 
       icon: <Video className="text-[#0F9D58] group-hover:scale-110 transition-transform" size={24} />, 
+      category: 'workspace' 
+    },
+    { 
+      id: 'slides', 
+      name: 'Google Slides', 
+      description: 'Interactive outline generator & presentation slides designer', 
+      icon: <Presentation className="text-amber-600 group-hover:scale-110 transition-transform" size={24} />, 
+      category: 'workspace' 
+    },
+    { 
+      id: 'keep', 
+      name: 'Google Keep', 
+      description: 'Firebase persistent checklist cards & secure notes board', 
+      icon: <CheckSquare className="text-amber-500 group-hover:scale-110 transition-transform" size={24} />, 
       category: 'workspace' 
     },
     { 
@@ -588,7 +610,7 @@ const PluginsView: React.FC<PluginsViewProps> = ({ user, onClose, onUserUpdate }
             className="absolute inset-0 z-50 flex flex-col items-center justify-center p-6 bg-slate-950/80 backdrop-blur-md text-white"
           >
             <div className="relative flex items-center justify-center w-24 h-24 mb-6">
-              <div className="absolute inset-0 rounded-full border-4 border-slate-850 border-t-cyan-400 animate-spin"></div>
+              <div className="absolute inset-0 rounded-full border-4 border-slate-850 border-t-cyan-400"></div>
               <Sparkles className="text-cyan-400" size={32} />
             </div>
             <h2 className="text-lg font-black tracking-tight text-white">Google Secure Integration Auth</h2>
@@ -679,6 +701,21 @@ const PluginsView: React.FC<PluginsViewProps> = ({ user, onClose, onUserUpdate }
                   </div>
                 </div>
 
+                {LAUNCHABLE_PLUGINS.includes(selectedConnector.id) && isConnected[selectedConnector.id] && (
+                  <button 
+                    onClick={() => {
+                      if (onLaunchPlugin) {
+                        onLaunchPlugin(selectedConnector.id);
+                        setSelectedConnector(null);
+                      }
+                    }}
+                    className="w-full h-11 flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-2xl transition-all shadow-md active:scale-98"
+                  >
+                    <ArrowRight size={13} strokeWidth={2.5} />
+                    Open {selectedConnector.name} Application
+                  </button>
+                )}
+
                 <button 
                   onClick={async (e) => {
                     setSelectedConnector(null);
@@ -746,16 +783,28 @@ const PluginsView: React.FC<PluginsViewProps> = ({ user, onClose, onUserUpdate }
                     <p className="text-xs text-slate-400 font-semibold truncate mt-1 leading-normal">{plugin.description}</p>
                   </div>
                 </div>
-                <button
-                  onClick={(e) => toggleConnection(plugin, e)}
-                  className={`w-9 h-9 rounded-full flex items-center justify-center transition-all shrink-0 border ${
-                    isConnected[plugin.id] 
-                      ? 'bg-slate-50 border-emerald-100 text-emerald-500' 
-                      : 'bg-slate-50 border-slate-200/60 hover:bg-slate-900 hover:text-white hover:border-slate-900 text-slate-400'
-                  }`}
-                >
-                  {isConnected[plugin.id] ? <Check size={18} strokeWidth={3} /> : <Plus size={18} strokeWidth={3} />}
-                </button>
+                <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                  {LAUNCHABLE_PLUGINS.includes(plugin.id) && isConnected[plugin.id] && (
+                    <button
+                      onClick={() => onLaunchPlugin && onLaunchPlugin(plugin.id)}
+                      className="px-2.5 py-1 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-100 text-emerald-600 font-extrabold text-[10px] uppercase tracking-wider flex items-center gap-0.5 transition-all"
+                      title={`Launch ${plugin.name}`}
+                    >
+                      Open
+                      <ArrowRight size={10} strokeWidth={3} />
+                    </button>
+                  )}
+                  <button
+                    onClick={(e) => toggleConnection(plugin, e)}
+                    className={`w-8 h-8 rounded-full flex items-center justify-center transition-all shrink-0 border ${
+                      isConnected[plugin.id] 
+                        ? 'bg-slate-50 border-emerald-150 text-emerald-500' 
+                        : 'bg-slate-50 border-slate-200/60 hover:bg-slate-900 hover:text-white hover:border-slate-900 text-slate-400'
+                    }`}
+                  >
+                    {isConnected[plugin.id] ? <Check size={14} strokeWidth={3} /> : <Plus size={14} strokeWidth={3} />}
+                  </button>
+                </div>
               </div>
             ))}
           </div>

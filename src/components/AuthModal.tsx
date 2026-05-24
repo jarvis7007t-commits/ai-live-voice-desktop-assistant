@@ -77,17 +77,11 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
   if (!isOpen) return null;
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
+    <div
       className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
       onClick={onClose}
     >
-      <motion.div
-        initial={{ scale: 0.9, y: 40 }}
-        animate={{ scale: 1, y: 0 }}
-        exit={{ scale: 0.9, y: 40 }}
+      <div
         className="bg-white border border-slate-200 w-full max-w-md rounded-[40px] overflow-hidden shadow-2xl"
         onClick={e => e.stopPropagation()}
       >
@@ -182,8 +176,8 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
                 <Loader2 size={24} className="animate-spin" />
               ) : (
                 <>
-                  {isLogin ? 'Access Account' : 'Create Profile'}
-                  <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
+                   {isLogin ? 'Access Account' : 'Create Profile'}
+                   <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
                 </>
               )}
             </button>
@@ -221,8 +215,8 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
           <ShieldCheck size={16} className="text-slate-400" />
           <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">Wardenix Unified Security Hub</span>
         </div>
-      </motion.div>
-    </motion.div>
+      </div>
+    </div>
   );
 };
 

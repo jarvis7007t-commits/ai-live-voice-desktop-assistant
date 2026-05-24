@@ -510,6 +510,38 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
             </div>
           </div>
+
+          {/* Wardenix Desktop App (Electron Format) Guide */}
+          <div className="mt-6 pt-6 border-t border-slate-100">
+            <h2 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2">
+              <Cloud size={16} className="text-cyan-600 animate-pulse" />
+              <span>Native Electron PC Format</span>
+            </h2>
+            <div className="p-4 rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-cyan-50/20">
+              <p className="text-xs text-slate-600 leading-relaxed mb-3">
+                Run Wardenix natively on your PC as an independent shell window that stays <strong className="text-cyan-600 font-semibold">Always on Top</strong> of all apps, completely decoupled from your browser tabs.
+              </p>
+              <div className="text-[10px] text-slate-500 space-y-1.5 font-mono bg-white p-2.5 rounded-lg border border-slate-100 shadow-sm">
+                <div className="font-bold text-slate-700 mb-1 font-sans">⚡ Quick Start Steps:</div>
+                <div className="flex gap-1.5">
+                  <span className="text-cyan-600 font-bold">1.</span>
+                  <span>Export the project code as a <strong>ZIP</strong> (Settings gear in top header menu).</span>
+                </div>
+                <div className="flex gap-1.5">
+                  <span className="text-cyan-600 font-bold">2.</span>
+                  <span>Extract files and open terminal in folder.</span>
+                </div>
+                <div className="flex gap-1.5">
+                  <span className="text-cyan-600 font-bold">3.</span>
+                  <span>Install packages with: <br/><code className="bg-slate-100 text-rose-600 font-bold px-1 py-0.5 rounded ml-3">npm install</code></span>
+                </div>
+                <div className="flex gap-1.5">
+                  <span className="text-cyan-600 font-bold">4.</span>
+                  <span>Launch native floating shell: <br/><code className="bg-slate-100 text-rose-600 font-bold px-1 py-0.5 rounded ml-3">npx electron .</code></span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
       </motion.div>

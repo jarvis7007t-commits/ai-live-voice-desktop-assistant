@@ -154,29 +154,7 @@ const SearchView: React.FC<SearchViewProps> = ({
           )}
         </div>
 
-        {/* Footer with Shortcuts */}
-        <div className="px-6 py-4 border-t border-slate-200/60 bg-white/40 flex items-center justify-end gap-6">
-          <div className="flex items-center gap-1.5 overflow-hidden">
-             <span className="text-[11px] font-bold text-slate-400">Go</span>
-             <div className="px-1.5 py-0.5 bg-white border border-slate-200 rounded text-[10px] text-slate-400 shadow-sm flex items-center">
-                <ArrowRight size={10} className="-rotate-90" />
-             </div>
-          </div>
-          
-          <div className="flex items-center gap-1.5">
-             <span className="text-[11px] font-bold text-slate-400">Edit</span>
-             <div className="px-2 py-0.5 bg-white border border-slate-200 rounded text-[10px] text-slate-400 shadow-sm font-bold flex items-center gap-1">
-                Ctrl + <ArrowRight size={10} className="-rotate-90" /> E
-             </div>
-          </div>
 
-          <div className="flex items-center gap-1.5">
-             <span className="text-[11px] font-bold text-slate-400">Delete</span>
-             <div className="px-2 py-0.5 bg-white border border-slate-200 rounded text-[10px] text-slate-400 shadow-sm font-bold flex items-center gap-1">
-                Ctrl + <ArrowRight size={10} className="-rotate-90" /> D
-             </div>
-          </div>
-        </div>
       </motion.div>
     </div>
   );
