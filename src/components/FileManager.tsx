@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { 
   Trash2, 
   Search, 
@@ -17,7 +17,9 @@ import {
   Folder,
   FolderOpen,
   ChevronRight,
-  Home
+  Home,
+  Upload,
+  Download
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -35,9 +37,59 @@ interface FileManagerProps {
   files: FileItem[];
   onClose: () => void;
   onDelete?: (id: string) => void;
+  onUpload?: (newFiles: FileItem[]) => void;
 }
 
-const FileManager: React.FC<FileManagerProps> = ({ files, onClose, onDelete }) => {
+const getFileIcon = (type: string, thumbnail?: string, name?: string, id?: string) => {
+  let resolvedUrl = thumbnail;
+  if (id && typeof window !== 'undefined' && (window as any).__fileObjectUrls?.[id]) {
+    resolvedUrl = (window as any).__fileObjectUrls[id];
+  }
+
+  if (resolvedUrl && type.toLowerCase().startsWith('image/')) {
+    return <img src={resolvedUrl} alt="preview" className="w-full h-full object-cover transition-transform group-hover:scale-110" referrerPolicy="no-referrer" />;
+  }
+  const lowerType = type.toLowerCase();
+  const lowerName = (name || '').toLowerCase();
+  
+  if (lowerType.startsWith('image/')) {
+    return <FileImage size={24} className="text-blue-500" />;
+  }
+  if (lowerType.startsWith('video/')) {
+    return <FileVideo size={24} className="text-rose-500" />;
+  }
+  if (lowerType.includes('pdf') || lowerName.endsWith('.pdf')) {
+    return <FileText size={24} className="text-red-500" />;
+  }
+  if (lowerType.includes('sheet') || lowerType.includes('csv') || lowerType.includes('excel') || lowerName.endsWith('.csv') || lowerName.endsWith('.xlsx')) {
+    return <FilePieChart size={24} className="text-emerald-500" />;
+  }
+  if (
+    lowerType.includes('javascript') || 
+    lowerType.includes('typescript') || 
+    lowerType.includes('json') || 
+    lowerType.includes('html') || 
+    lowerType.includes('coding') ||
+    lowerType.includes('css') || 
+    lowerType.includes('code') ||
+    lowerName.endsWith('.js') || lowerName.endsWith('.ts') || lowerName.endsWith('.tsx') || lowerName.endsWith('.jsx') || lowerName.endsWith('.py') || lowerName.endsWith('.json')
+  ) {
+    return <FileCode size={24} className="text-amber-500" />;
+  }
+  if (lowerType.includes('text') || lowerType.includes('doc') || lowerType.includes('word') || lowerType.includes('office') || lowerName.endsWith('.txt') || lowerName.endsWith('.docx')) {
+    return <FileText size={24} className="text-indigo-500" />;
+  }
+  return <FileIcon size={24} className="text-slate-400" />;
+};
+
+const getFileUrl = (file: FileItem): string | undefined => {
+  if (typeof window !== 'undefined' && (window as any).__fileObjectUrls?.[file.id]) {
+    return (window as any).__fileObjectUrls[file.id] || undefined;
+  }
+  return file.thumbnail || undefined;
+};
+
+const FileManager: React.FC<FileManagerProps> = ({ files, onClose, onDelete, onUpload }) => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
@@ -47,6 +99,60 @@ const FileManager: React.FC<FileManagerProps> = ({ files, onClose, onDelete }) =
   const [previewFile, setPreviewFile] = useState<FileItem | null>(null);
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
   const [currentPath, setCurrentPath] = useState('');
+
+  const uploadInputRef = useRef<HTMLInputElement>(null);
+
+  const handleUploadClick = () => {
+    uploadInputRef.current?.click();
+  };
+
+  const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fileList = e.target.files;
+    if (!fileList || fileList.length === 0) return;
+    const newUploadedItems: FileItem[] = [];
+
+    for (let i = 0; i < fileList.length; i++) {
+      const file = fileList[i];
+      let thumbnail: string | undefined;
+
+      if (file.type.startsWith('image/')) {
+        thumbnail = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            resolve(reader.result as string);
+          };
+          reader.readAsDataURL(file);
+        });
+      }
+
+      const formatFileSize = (bytes: number) => {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const idx = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, idx)).toFixed(2)) + ' ' + sizes[idx];
+      };
+
+      newUploadedItems.push({
+        id: `${file.name}-${Date.now()}-${Math.random()}`,
+        name: file.name,
+        size: formatFileSize(file.size),
+        date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        type: file.type || 'application/octet-stream',
+        thumbnail,
+        createdBy: 'Me'
+      });
+    }
+
+    if (onUpload) {
+      onUpload(newUploadedItems);
+    }
+    
+    // Reset file input
+    if (uploadInputRef.current) {
+      uploadInputRef.current.value = '';
+    }
+  };
 
   const filteredFiles = useMemo(() => {
     return files.filter(f => {
@@ -158,10 +264,27 @@ const FileManager: React.FC<FileManagerProps> = ({ files, onClose, onDelete }) =
     <div className="flex flex-col h-full bg-white/70 backdrop-blur-[32px] text-slate-900 rounded-3xl overflow-hidden shadow-2xl border border-white/40">
       {/* Header */}
       <div className="flex items-center justify-between p-6 pb-2">
-        <h1 className="text-2xl font-bold tracking-tight">Files</h1>
+        <div className="flex items-center gap-4">
+          <h1 className="text-2xl font-bold tracking-tight">Files</h1>
+          <button 
+            onClick={handleUploadClick}
+            className="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-full text-xs font-bold transition-all shadow-md hover:shadow-lg active:scale-95"
+          >
+            <Upload size={14} />
+            <span>Upload File</span>
+          </button>
+        </div>
         <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400">
            <X size={20} />
         </button>
+        <input 
+          type="file" 
+          ref={uploadInputRef} 
+          onChange={handleFileInputChange} 
+          multiple 
+          className="hidden" 
+          accept="image/*,video/*,application/pdf,text/*,.doc,.docx,.xls,.xlsx,.csv,.tsv,.json,.js,.ts,.tsx,.py"
+        />
       </div>
 
       {/* Action Bar */}
@@ -376,11 +499,7 @@ const FileManager: React.FC<FileManagerProps> = ({ files, onClose, onDelete }) =
             <div 
               key={file.id}
               onClick={() => {
-                if (file.thumbnail || file.type.startsWith('image/')) {
-                  setFullscreenImage(file.thumbnail || null);
-                } else {
-                  setPreviewFile(file);
-                }
+                setPreviewFile(file);
               }}
               className={`group flex items-center gap-4 p-3 rounded-2xl border transition-all cursor-pointer ${
                 selectedIds.has(file.id) 
@@ -398,15 +517,7 @@ const FileManager: React.FC<FileManagerProps> = ({ files, onClose, onDelete }) =
               </div>
               
               <div className="w-14 h-14 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shrink-0">
-                 {file.thumbnail ? (
-                   <img src={file.thumbnail} alt={file.name} className="w-full h-full object-cover transition-transform group-hover:scale-110" />
-                 ) : file.type.startsWith('image/') ? (
-                   <div className="w-full h-full bg-slate-100 flex items-center justify-center">
-                      <FileImage size={24} className="text-slate-400" />
-                   </div>
-                 ) : (
-                   <FileIcon size={24} className="text-slate-400" />
-                 )}
+                {getFileIcon(file.type, file.thumbnail, file.name, file.id)}
               </div>
 
               <div className="flex-1 min-w-0">
@@ -459,7 +570,7 @@ const FileManager: React.FC<FileManagerProps> = ({ files, onClose, onDelete }) =
               onClick={e => e.stopPropagation()}
             >
               <img 
-                src={fullscreenImage} 
+                src={fullscreenImage || undefined} 
                 alt="Fullscreen Preview" 
                 className="w-full h-full object-contain bg-slate-900/10"
               />
@@ -470,63 +581,125 @@ const FileManager: React.FC<FileManagerProps> = ({ files, onClose, onDelete }) =
 
       {/* File Detail Overlay */}
       <AnimatePresence>
-        {previewFile && (
-          <div className="fixed inset-0 z-[100] bg-slate-950/30 backdrop-blur-xl flex items-center justify-center p-4">
-             <motion.div
-               initial={{ opacity: 0, scale: 0.95, y: 20 }}
-               animate={{ opacity: 1, scale: 1, y: 0 }}
-               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-               className="w-full max-w-2xl bg-white/80 backdrop-blur-[40px] rounded-[32px] shadow-2xl overflow-hidden relative border border-white/30"
-             >
-                <div className="absolute top-6 right-8">
-                  <button onClick={() => setPreviewFile(null)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-full transition-colors">
-                    <X size={20} />
-                  </button>
-                </div>
+        {previewFile && (() => {
+          const isLargePreview = previewFile.type.startsWith('video/') || previewFile.type.includes('pdf') || previewFile.name.toLowerCase().endsWith('.pdf');
+          return (
+            <div className="fixed inset-0 z-[100] bg-slate-950/30 backdrop-blur-xl flex items-center justify-center p-4">
+               <motion.div
+                 initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                 animate={{ opacity: 1, scale: 1, y: 0 }}
+                 exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                 className={`w-full ${isLargePreview ? 'max-w-4xl' : 'max-w-xl'} bg-white/90 backdrop-blur-[40px] rounded-[32px] shadow-2xl overflow-hidden relative border border-white/30`}
+               >
+                  <div className="absolute top-6 right-8 z-10">
+                    <button onClick={() => setPreviewFile(null)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-full transition-colors">
+                      <X size={20} />
+                    </button>
+                  </div>
 
-                <div className="p-16 flex flex-col items-center">
-                   <div className="w-24 h-24 rounded-3xl bg-slate-50 border border-slate-100 flex items-center justify-center mb-6 shadow-sm overflow-hidden text-slate-400">
-                      {previewFile.thumbnail ? (
-                        <img src={previewFile.thumbnail} alt={previewFile.name} className="w-full h-full object-cover" />
-                      ) : previewFile.type.startsWith('image/') ? (
-                        <FileImage size={32} />
-                      ) : (
-                        <FileIcon size={32} />
-                      )}
-                   </div>
-                   <h2 className="text-2xl font-bold text-slate-900 mb-2 truncate max-w-md">{previewFile.name}</h2>
-                   <p className="text-sm font-medium text-slate-400 mb-12">{previewFile.size} • {previewFile.type}</p>
+                  <div className="w-full p-6 md:p-8 flex flex-col items-center">
+                    {/* File Metadata Header */}
+                    <div className="flex flex-col items-center text-center mb-6 w-full px-4 mt-4">
+                      <h2 className="text-xl font-bold text-slate-900 truncate max-w-full leading-tight">{previewFile.name}</h2>
+                      <p className="text-xs font-semibold text-slate-400 mt-1 uppercase tracking-wider">{previewFile.size} • {previewFile.type || 'Document'}</p>
+                    </div>
 
-                   <div className="w-full relative px-4">
-                      <div className="flex items-center gap-3 px-5 py-3 rounded-2xl border border-slate-100 bg-white shadow-sm">
-                         <Search size={18} className="text-slate-300" />
-                         <input 
-                           type="text" 
-                           placeholder="How can I help you today?" 
-                           className="flex-1 bg-transparent border-none outline-none text-sm font-medium text-slate-600 placeholder:text-slate-300"
-                         />
-                         <div className="flex items-center gap-2">
-                           <div className="w-6 h-6 rounded-full bg-slate-900 flex items-center justify-center">
-                             <div className="flex gap-0.5">
-                               {[1, 2, 3].map(i => <div key={i} className="w-[1.5px] h-2.5 bg-white/60" />)}
-                             </div>
+                    {/* Dynamic Viewer */}
+                    <div className="w-full flex justify-center items-center">
+                      {previewFile.type.startsWith('image/') ? (
+                        <div className="w-full max-h-[55vh] rounded-2xl overflow-hidden bg-slate-50 border border-slate-100 flex items-center justify-center relative group/preview">
+                           <img 
+                             src={getFileUrl(previewFile)} 
+                             alt={previewFile.name} 
+                             className="max-w-full max-h-[55vh] object-contain cursor-zoom-in rounded-xl"
+                             onClick={() => setFullscreenImage(getFileUrl(previewFile))}
+                           />
+                           <div className="absolute bottom-4 right-4 opacity-0 group-hover/preview:opacity-100 transition-opacity bg-black/60 text-white text-xs px-3 py-1.5 rounded-full pointer-events-none font-bold">
+                             Click to zoom
                            </div>
-                           <button className="p-1 text-slate-300"><Trash2 size={16} /></button>
-                         </div>
-                      </div>
-                   </div>
-                </div>
+                        </div>
+                      ) : previewFile.type.includes('pdf') || previewFile.name.toLowerCase().endsWith('.pdf') ? (
+                        <div className="w-full h-[60vh] rounded-2xl border border-slate-200/60 overflow-hidden bg-white shadow-inner relative flex flex-col">
+                           <iframe 
+                             src={getFileUrl(previewFile)} 
+                             className="w-full h-full border-none rounded-2xl"
+                             title={previewFile.name}
+                           />
+                        </div>
+                      ) : previewFile.type.startsWith('video/') ? (
+                        <div className="w-full max-h-[55vh] rounded-2xl overflow-hidden bg-black flex items-center justify-center border border-slate-800 shadow-lg relative">
+                           <video 
+                             src={getFileUrl(previewFile)} 
+                             controls 
+                             autoPlay
+                             className="w-full max-h-[55vh] object-contain rounded-xl"
+                           />
+                        </div>
+                      ) : previewFile.type.includes('sheet') || previewFile.type.includes('csv') || previewFile.type.includes('excel') || previewFile.name.toLowerCase().endsWith('.csv') || previewFile.name.toLowerCase().endsWith('.xlsx') ? (
+                        <div className="w-full py-12 rounded-2xl border border-slate-150 bg-slate-50/50 flex flex-col items-center justify-center px-8 text-center">
+                           <FilePieChart size={56} className="text-emerald-500 mb-4 animate-bounce" />
+                           <span className="text-sm font-bold text-slate-800 mb-1">Spreadsheet Document</span>
+                           <p className="text-xs text-slate-400 max-w-sm mb-6">Preview of interactive sheets is supported via download. Click below to open in Excel or Sheets.</p>
+                           <a 
+                             href={getFileUrl(previewFile)} 
+                             download={previewFile.name}
+                             className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full text-xs font-bold transition-all shadow hover:shadow-md inline-flex items-center gap-2"
+                           >
+                             <Download size={14} />
+                             <span>Download Spreadsheet</span>
+                           </a>
+                        </div>
+                      ) : (
+                        <div className="w-full py-12 rounded-2xl border border-slate-150 bg-slate-50/50 flex flex-col items-center justify-center px-8 text-center">
+                           <FileIcon size={56} className="text-slate-400 mb-4" />
+                           <span className="text-sm font-bold text-slate-800 mb-1">Generic Document</span>
+                           <p className="text-xs text-slate-400 max-w-sm mb-6 font-medium">Interactive preview is not supported for {previewFile.type} type. Download file below to open locally.</p>
+                           <a 
+                             href={getFileUrl(previewFile)} 
+                             download={previewFile.name}
+                             className="px-6 py-2.5 bg-slate-900 hover:bg-slate-850 text-white rounded-full text-xs font-bold transition-all shadow hover:shadow-md inline-flex items-center gap-2"
+                           >
+                             <Download size={14} />
+                             <span>Download File</span>
+                           </a>
+                        </div>
+                      )}
+                    </div>
+                  </div>
 
-                <div className="px-8 py-5 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
-                   <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-full bg-violet-600 flex items-center justify-center text-[10px] text-white">M</div>
-                      <span className="text-xs font-bold text-slate-600">Manish Kumar</span>
-                   </div>
-                   <button onClick={() => setPreviewFile(null)} className="px-4 py-1.5 rounded-full bg-slate-900 text-white text-xs font-bold">Connect</button>
-                </div>
-             </motion.div>
-          </div>
-        )}
+                  {/* Footer Controls */}
+                  <div className="px-8 py-5 bg-slate-50 border-t border-slate-150 flex items-center justify-between">
+                     <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-full bg-violet-600 flex items-center justify-center text-[10px] text-white font-bold">M</div>
+                        <span className="text-xs font-bold text-slate-650">Uploaded by Me</span>
+                     </div>
+                     <div className="flex items-center gap-3">
+                       {onDelete && (
+                         <button 
+                           onClick={() => {
+                             onDelete(previewFile.id);
+                             setPreviewFile(null);
+                           }}
+                           className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-rose-50 hover:text-rose-600 text-slate-650 rounded-full text-xs font-bold transition-all"
+                         >
+                           <Trash2 size={13} />
+                           <span>Delete</span>
+                         </button>
+                       )}
+                       <a 
+                         href={getFileUrl(previewFile)} 
+                         download={previewFile.name}
+                         className="flex items-center gap-2 px-5 py-2 bg-slate-900 hover:bg-slate-850 text-white rounded-full text-xs font-bold transition-all shadow-md active:scale-95"
+                       >
+                         <Download size={13} />
+                         <span>Download file</span>
+                       </a>
+                     </div>
+                  </div>
+               </motion.div>
+            </div>
+          );
+        })()}
       </AnimatePresence>
     </div>
   );

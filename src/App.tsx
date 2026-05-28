@@ -614,14 +614,18 @@ export default function App() {
       return () => clearTimeout(timer);
     }
   }, [uploadToast]);
-  const [globalFiles, setGlobalFiles] = useState<FileItem[]>([
-    { id: '1', name: 'image.png', size: '51.78 KB', date: 'May 10', type: 'image/png', createdBy: 'Me' },
-    { id: '2', name: 'image.png', size: '76.84 KB', date: 'Apr 12', type: 'image/png', createdBy: 'Me' },
-    { id: '3', name: 'image.png', size: '65.68 KB', date: 'Apr 12', type: 'image/png', createdBy: 'Me' },
-    { id: '4', name: 'image.png', size: '154.27 KB', date: 'Apr 12', type: 'image/png', createdBy: 'Grok' },
-    { id: '5', name: 'image.png', size: '111.22 KB', date: 'Apr 12', type: 'image/png', createdBy: 'Me' },
-    { id: '6', name: 'image.png', size: '118.25 KB', date: 'Apr 12', type: 'image/png', createdBy: 'Me' },
-  ]);
+  const [globalFiles, setGlobalFiles] = useState<FileItem[]>(() => {
+    try {
+      const saved = localStorage.getItem('wardenix_global_files');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('wardenix_global_files', JSON.stringify(globalFiles));
+  }, [globalFiles]);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -771,12 +775,22 @@ export default function App() {
     }
 
     const fileAttachments: { id: string; name: string; type: string; file: File; thumbnail?: string }[] = finalFiles.map((file) => {
+      const id = `${file.name}-${file.lastModified}-${Math.random()}`;
+      const objectUrl = URL.createObjectURL(file);
+      
+      if (typeof window !== 'undefined') {
+        if (!(window as any).__fileObjectUrls) {
+          (window as any).__fileObjectUrls = {};
+        }
+        (window as any).__fileObjectUrls[id] = objectUrl;
+      }
+
       let thumbnail: string | undefined;
       if (file.type.startsWith('image/')) {
-        thumbnail = URL.createObjectURL(file);
+        thumbnail = objectUrl;
       }
       return {
-        id: `${file.name}-${file.lastModified}-${Math.random()}`,
+        id,
         name: file.webkitRelativePath || file.name,
         type: file.type || 'application/octet-stream',
         file,
@@ -1287,6 +1301,7 @@ export default function App() {
                 files={globalFiles}
                 onClose={() => setActiveView('chat')} 
                 onDelete={(id) => setGlobalFiles(prev => prev.filter(f => f.id !== id))}
+                onUpload={(newFiles) => setGlobalFiles(prev => [...newFiles, ...prev])}
               />
             </div>
           ) : activeView === 'imagine' ? (
@@ -1515,7 +1530,7 @@ export default function App() {
               onClick={e => e.stopPropagation()}
             >
               <img 
-                src={lightboxImage} 
+                src={lightboxImage || undefined} 
                 alt="Fullscreen Preview" 
                 className="w-full h-full object-contain bg-slate-900/10"
               />

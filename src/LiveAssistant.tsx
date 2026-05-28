@@ -952,37 +952,7 @@ const LiveAssistant: React.FC<LiveAssistantProps> = ({ onClose, onSaveLiveConver
       <video ref={screenVideoRef} autoPlay playsInline muted className="hidden" />
       <canvas ref={canvasRef} className="hidden" />
 
-      {/* Transcriptions - Subtitle Style */}
-      <AnimatePresence>
-        {isConnected && Array.isArray(transcriptions) && transcriptions.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            className="absolute -top-16 left-0 right-0 flex flex-col items-center gap-2 pointer-events-none"
-          >
-            <div className="flex flex-col items-center gap-1.5 max-w-[90%]">
-              {(transcriptions || []).slice(-3).map((t, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className={`px-4 py-1.5 rounded-2xl text-[11px] font-medium backdrop-blur-md shadow-lg border text-center transition-all duration-300
-                    ${t.role === 'user' 
-                      ? 'bg-cyan-500/20 text-cyan-200 border-cyan-500/30' 
-                      : 'bg-zinc-900/60 text-zinc-100 border-white/10'
-                    } ${i < (transcriptions || []).slice(-3).length - 1 ? 'opacity-40 scale-95' : 'opacity-100'}`}
-                >
-                  <span className="opacity-50 mr-2 uppercase text-[8px] font-bold tracking-wider">
-                    {t.role === 'user' ? 'YOU:' : 'AI:'}
-                  </span>
-                  {t.text}
-                </motion.div>
-              ))}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Transcriptions - Subtitle Style removed to avoid duplicate designs and overlapping overlay popups */}
 
       <div
         className="section-vortex"

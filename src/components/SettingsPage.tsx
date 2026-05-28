@@ -87,20 +87,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
           <h1 className="text-2xl font-bold text-slate-900">System Settings</h1>
           <p className="text-sm text-slate-500">Configure your AI models, voice personas, and system capabilities.</p>
         </div>
-        <div className="flex gap-3">
-          <button 
-            onClick={onLoginClick}
-            className="bg-[#6b21a8] text-white px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-[#581c87] transition-all active:scale-95 shadow-md shadow-purple-200"
-          >
-            Register
-          </button>
-          <button 
-            onClick={onLoginClick}
-            className="bg-slate-50 text-slate-700 px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-slate-100 transition-all border border-slate-200 active:scale-95"
-          >
-            Sign In
-          </button>
-        </div>
+        {/* Buttons deleted as requested */}
       </div>
 
       {/* Main Content Area */}
